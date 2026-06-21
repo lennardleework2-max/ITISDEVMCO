@@ -36,9 +36,18 @@ You can also select which member the conflict is with (optional).
   - Evidence of missed deadlines
   - Any relevant documentation
 
-### Step 3: Choose Resolution Approach
+### Step 3: System Recommendation and Resolution Choice
 
-Select how you'd like to proceed:
+The system reviews your dispute and provides an intelligent recommendation:
+
+**System Recommendations by Type:**
+- **Uneven Distribution**: Analysis of current workload and redistribution suggestions
+- **Missed Deadline**: Guidance on requesting deadline extensions from professor
+- **Unclear Task Assignment**: Suggestion to schedule group meeting for clarity
+- **Conflict (Unresponsive)**: Try private message first, then escalate if needed
+- **Conflict (Quality)**: Steps to clarify expectations and add revision notes
+
+After reviewing the system's recommendation, select how you'd like to proceed:
 
 **Resolve within group**
 - Address the issue with group members first
