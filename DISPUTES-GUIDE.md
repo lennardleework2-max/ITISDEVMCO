@@ -28,26 +28,23 @@ If you select "Conflict with Groupmate", you'll be asked to specify:
 
 You can also select which member the conflict is with (optional).
 
-### Step 2: Describe the Situation
+### Step 2: Describe the Situation and See Recommendations
 
 - Provide a detailed description of the issue
+- **System shows intelligent recommendation** based on your dispute type:
+  - **Uneven Distribution**: Analysis of current workload (total tasks, fair distribution per person)
+  - **Missed Deadline**: Guidance on requesting deadline extensions from professor
+  - **Unclear Task Assignment**: Suggestion to schedule group meeting for clarity
+  - **Conflict (Unresponsive)**: Try private message first, then escalate if needed
+  - **Conflict (Quality)**: Steps to clarify expectations and add revision notes
 - Add supporting context or proof (optional)
   - Screenshots of messages
   - Evidence of missed deadlines
   - Any relevant documentation
 
-### Step 3: System Recommendation and Resolution Choice
+### Step 3: Choose Resolution Approach
 
-The system reviews your dispute and provides an intelligent recommendation:
-
-**System Recommendations by Type:**
-- **Uneven Distribution**: Analysis of current workload and redistribution suggestions
-- **Missed Deadline**: Guidance on requesting deadline extensions from professor
-- **Unclear Task Assignment**: Suggestion to schedule group meeting for clarity
-- **Conflict (Unresponsive)**: Try private message first, then escalate if needed
-- **Conflict (Quality)**: Steps to clarify expectations and add revision notes
-
-After reviewing the system's recommendation, select how you'd like to proceed:
+Review your dispute details and select how you'd like to proceed:
 
 **Resolve within group**
 - Address the issue with group members first
@@ -63,15 +60,18 @@ After reviewing the system's recommendation, select how you'd like to proceed:
 
 ### Uneven Distribution
 - System automatically analyzes current task distribution
-- Shows each member's assigned tasks vs fair distribution
-- Identifies overloaded and underloaded members
-- Provides specific redistribution suggestions
+- Shows key metrics in an easy-to-read format:
+  - **Total Tasks**: Number of all tasks in the project
+  - **Fair Distribution**: Recommended tasks per person
+  - **Team Members**: Number of people in the team
+- Provides suggestions for balancing workload
 
-**Example Output:**
+**Example Display:**
 ```
-Fair distribution: ~4 tasks per member
-Overloaded: John Cruz (6 tasks), Mary Santos (5 tasks)
-Can take more tasks: Carl Reyes (2 tasks)
+Total Tasks: 12
+Fair Distribution: 4 tasks per person
+Team Members: 3
+Suggestion: Fair distribution suggests 4 tasks per member. Some members are overloaded.
 ```
 
 ### Missed Deadline

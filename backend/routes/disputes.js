@@ -102,8 +102,10 @@ async function calculateUnevenDistribution(projectId) {
 
     return {
       suggestion,
-      currentDistribution: workload,
-      averagePerMember: fairDistribution
+      totalTasks: totalAssignments,
+      fairDistribution: fairDistribution,
+      memberCount: memberUserdescs.length,
+      currentDistribution: workload
     };
   } catch (error) {
     console.error('Error calculating distribution:', error.message);

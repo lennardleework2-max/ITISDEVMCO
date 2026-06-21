@@ -328,6 +328,20 @@ function ProjectDetails() {
     return actions[disputeType] || 'Please provide details about the dispute for review.';
   }
 
+  function formatWorkloadAnalysis(analysisJson) {
+    try {
+      const analysis = JSON.parse(analysisJson);
+      return {
+        totalTasks: analysis.totalTasks || 0,
+        fairDistribution: analysis.fairDistribution || 0,
+        memberCount: analysis.memberCount || 0,
+        suggestion: analysis.suggestion || ''
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -647,14 +661,31 @@ function ProjectDetails() {
                     </div>
                   )}
 
-                  {dispute.distribution_analysis && (
-                    <div className="dispute-analysis">
-                      <strong>Workload Analysis:</strong>
-                      <pre className="analysis-data">
-                        {JSON.stringify(JSON.parse(dispute.distribution_analysis), null, 2)}
-                      </pre>
-                    </div>
-                  )}
+                  {dispute.distribution_analysis && (() => {
+                    const analysis = formatWorkloadAnalysis(dispute.distribution_analysis);
+                    return analysis && (
+                      <div className="dispute-analysis">
+                        <strong>Workload Analysis:</strong>
+                        <div className="analysis-summary">
+                          <div className="analysis-stat">
+                            <span className="stat-label">Total Tasks:</span>
+                            <span className="stat-value">{analysis.totalTasks}</span>
+                          </div>
+                          <div className="analysis-stat">
+                            <span className="stat-label">Fair Distribution:</span>
+                            <span className="stat-value">{analysis.fairDistribution} tasks per person</span>
+                          </div>
+                          <div className="analysis-stat">
+                            <span className="stat-label">Team Members:</span>
+                            <span className="stat-value">{analysis.memberCount}</span>
+                          </div>
+                        </div>
+                        {analysis.suggestion && (
+                          <p className="analysis-suggestion">{analysis.suggestion}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="dispute-meta">
                     <span className="text-sm text-gray">
@@ -1033,7 +1064,7 @@ function ProjectDetails() {
                   </div>
                 )}
 
-                {/* Step 2: Description and Proof */}
+                {/* Step 2: Description, System Recommendation, and Proof */}
                 {disputeStep === 2 && (
                   <>
                     <div className="form-group">
@@ -1051,6 +1082,18 @@ function ProjectDetails() {
                       />
                     </div>
 
+                    {newDispute.description.trim() && (
+                      <div className="system-suggestion-box">
+                        <div className="suggestion-header">
+                          <span className="suggestion-icon">💡</span>
+                          <strong>System Recommendation</strong>
+                        </div>
+                        <p className="suggestion-text">
+                          {getSuggestedAction(newDispute.dispute_type, newDispute.sub_type)}
+                        </p>
+                      </div>
+                    )}
+
                     <div className="form-group">
                       <label className="form-label" htmlFor="supportingContext">
                         Supporting Context / Proof (optional)
@@ -1067,23 +1110,16 @@ function ProjectDetails() {
                   </>
                 )}
 
-                {/* Step 3: System Suggestion and Resolution Choice */}
+                {/* Step 3: Resolution Choice */}
                 {disputeStep === 3 && (
                   <div>
                     <div className="dispute-summary">
                       <h3>Review Your Dispute</h3>
                       <p><strong>Type:</strong> {newDispute.dispute_type} {newDispute.sub_type && `- ${newDispute.sub_type}`}</p>
                       <p><strong>Description:</strong> {newDispute.description}</p>
-                    </div>
-
-                    <div className="system-suggestion-box">
-                      <div className="suggestion-header">
-                        <span className="suggestion-icon">💡</span>
-                        <strong>System Recommendation</strong>
-                      </div>
-                      <p className="suggestion-text">
-                        {getSuggestedAction(newDispute.dispute_type, newDispute.sub_type)}
-                      </p>
+                      {newDispute.supporting_context && (
+                        <p><strong>Supporting Context:</strong> {newDispute.supporting_context.substring(0, 100)}{newDispute.supporting_context.length > 100 ? '...' : ''}</p>
+                      )}
                     </div>
 
                     <div className="form-group">
@@ -1507,16 +1543,45 @@ function ProjectDetails() {
 
         .dispute-analysis strong {
           display: block;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.75rem;
           color: var(--gray-800);
+          font-size: 0.875rem;
         }
 
-        .analysis-data {
+        .analysis-summary {
+          display: flex;
+          gap: 1.5rem;
+          margin-bottom: 0.75rem;
+          flex-wrap: wrap;
+        }
+
+        .analysis-stat {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .stat-label {
           font-size: 0.75rem;
-          color: var(--gray-600);
+          color: var(--gray-500);
+          text-transform: uppercase;
+          letter-spacing: 0.025em;
+          font-weight: 500;
+        }
+
+        .stat-value {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: var(--primary-dark);
+        }
+
+        .analysis-suggestion {
           margin: 0;
-          overflow-x: auto;
-          white-space: pre-wrap;
+          font-size: 0.875rem;
+          color: var(--gray-700);
+          line-height: 1.5;
+          padding-top: 0.75rem;
+          border-top: 1px solid var(--gray-200);
         }
 
         .dispute-meta {
