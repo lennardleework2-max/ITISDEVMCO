@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { select, insert, update } = require('../utils/supabase');
-const { sanitizeInput } = require('../utils/validation');
+const { sanitizeString } = require('../utils/validation');
 
 // Middleware to check authentication
 function requireAuth(req, res, next) {
@@ -97,7 +97,7 @@ router.post('/:projectId', requireAuth, async (req, res) => {
     }
 
     // Validate availability hours
-    if (availability_hours_per_week !== undefined && availability_hours_per_week !== null) {
+    if (availability_hours_per_week !== undefined && availability_hours_per_week !== null && availability_hours_per_week !== '') {
       const hours = parseInt(availability_hours_per_week);
       if (isNaN(hours) || hours < 0 || hours > 168) {
         return res.status(400).json({ error: 'Availability hours must be between 0 and 168' });
@@ -111,12 +111,12 @@ router.post('/:projectId', requireAuth, async (req, res) => {
     const capacityData = {
       project_id: projectId,
       userdesc: userdesc,
-      internship: sanitizeInput(internship) || null,
-      organizations: sanitizeInput(organizations) || null,
-      other_school_work: sanitizeInput(other_school_work) || null,
-      personal_responsibilities: sanitizeInput(personal_responsibilities) || null,
+      internship: sanitizeString(internship) || null,
+      organizations: sanitizeString(organizations) || null,
+      other_school_work: sanitizeString(other_school_work) || null,
+      personal_responsibilities: sanitizeString(personal_responsibilities) || null,
       availability_hours_per_week: availability_hours_per_week || null,
-      notes: sanitizeInput(notes) || null,
+      notes: sanitizeString(notes) || null,
       updated_at: new Date().toISOString()
     };
 

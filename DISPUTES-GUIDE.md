@@ -28,23 +28,27 @@ If you select "Conflict with Groupmate", you'll be asked to specify:
 
 You can also select which member the conflict is with (optional).
 
-### Step 2: Describe the Situation and See Recommendations
+### Step 2: Describe the Situation
 
 - Provide a detailed description of the issue
-- **System shows intelligent recommendation** based on your dispute type:
-  - **Uneven Distribution**: Analysis of current workload (total tasks, fair distribution per person)
-  - **Missed Deadline**: Guidance on requesting deadline extensions from professor
-  - **Unclear Task Assignment**: Suggestion to schedule group meeting for clarity
-  - **Conflict (Unresponsive)**: Try private message first, then escalate if needed
-  - **Conflict (Quality)**: Steps to clarify expectations and add revision notes
 - Add supporting context or proof (optional)
   - Screenshots of messages
   - Evidence of missed deadlines
   - Any relevant documentation
 
-### Step 3: Choose Resolution Approach
+### Step 3: Review and Choose Resolution
 
-Review your dispute details and select how you'd like to proceed:
+Review your dispute details and see the system recommendation:
+
+- **Review Your Dispute**: Summary of type, description, and supporting context
+- **System Recommendation**: Intelligent suggestion based on your dispute type:
+  - **Uneven Distribution**: Analysis of current workload (total tasks, fair distribution per person)
+  - **Missed Deadline**: Guidance on requesting deadline extensions from professor
+  - **Unclear Task Assignment**: Suggestion to schedule group meeting for clarity
+  - **Conflict (Unresponsive)**: Try private message first, then escalate if needed
+  - **Conflict (Quality)**: Steps to clarify expectations and add revision notes
+
+Select how you'd like to proceed:
 
 **Resolve within group**
 - Address the issue with group members first
@@ -59,20 +63,35 @@ Review your dispute details and select how you'd like to proceed:
 ## System Suggestions by Dispute Type
 
 ### Uneven Distribution
-- System automatically analyzes current task distribution
+- System automatically analyzes workload distribution based on task complexity/difficulty
 - Shows key metrics in an easy-to-read format:
-  - **Total Tasks**: Number of all tasks in the project
-  - **Fair Distribution**: Recommended tasks per person
+  - **Total Complexity**: Sum of all task difficulty points in the project
+  - **Suggested Complexity per Member**: Recommended complexity points per person
   - **Team Members**: Number of people in the team
-- Provides suggestions for balancing workload
+  - **Current Workload per Member**: Shows each member's complexity points and task count
+- Provides suggestions for balancing workload based on difficulty, not just task count
 
 **Example Display:**
 ```
-Total Tasks: 12
-Fair Distribution: 4 tasks per person
+Total Complexity: 45 points
+Suggested Complexity per Member: 15 points
 Team Members: 3
-Suggestion: Fair distribution suggests 4 tasks per member. Some members are overloaded.
+
+Current Workload per Member:
+- John Doe: 25 points (5 tasks) - Overloaded
+- Jane Smith: 12 points (3 tasks) - Can take more
+- Bob Johnson: 8 points (2 tasks) - Can take more
+
+Suggestion: Fair distribution: ~15 complexity points per member.
+Overloaded: John Doe (25 pts). Can take more: Jane Smith (12 pts), Bob Johnson (8 pts).
 ```
+
+**How it works:**
+- Each task has a difficulty rating from 1 (very easy) to 10 (very hard)
+- The system sums up all difficulty points for each member
+- Fair distribution = Total complexity ÷ Number of members
+- Members with >20% above fair share are flagged as overloaded
+- Members with >20% below fair share can take more tasks
 
 ### Missed Deadline
 - System suggests messaging the professor for reconsideration

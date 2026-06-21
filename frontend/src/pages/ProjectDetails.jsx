@@ -23,7 +23,7 @@ function ProjectDetails() {
   const [showSetCapacity, setShowSetCapacity] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [memberEmail, setMemberEmail] = useState('');
-  const [newTask, setNewTask] = useState({ description: '', deadline: '', assignees: [] });
+  const [newTask, setNewTask] = useState({ description: '', deadline: '', difficulty: 5, assignees: [] });
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -37,6 +37,7 @@ function ProjectDetails() {
     related_member_userdesc: '',
     resolution_choice: ''
   });
+  const [complexityAnalysis, setComplexityAnalysis] = useState(null);
 
   // Capacity modal state
   const [capacityForm, setCapacityForm] = useState({
@@ -120,10 +121,11 @@ function ProjectDetails() {
         project_id: projectId,
         task_description: newTask.description.trim(),
         task_date_deadline: newTask.deadline || null,
+        difficulty: newTask.difficulty || 5,
         assignees: newTask.assignees
       });
       setShowCreateTask(false);
-      setNewTask({ description: '', deadline: '', assignees: [] });
+      setNewTask({ description: '', deadline: '', difficulty: 5, assignees: [] });
       loadData();
     } catch (err) {
       setActionError(err.message || 'Failed to create task');
@@ -159,6 +161,7 @@ function ProjectDetails() {
       task_id: task.task_id,
       description: task.task_description,
       deadline: task.task_date_deadline ? task.task_date_deadline.split('T')[0] : '',
+      difficulty: task.difficulty || 5,
       status: task.status,
       canFullEdit: isOwner // Only owners can edit description and deadline
     });
@@ -176,6 +179,7 @@ function ProjectDetails() {
       await tasksApi.update(editingTask.task_id, {
         task_description: editingTask.description.trim(),
         task_date_deadline: editingTask.deadline || null,
+        difficulty: editingTask.difficulty || 5,
         status: editingTask.status
       });
       setShowEditTask(false);
@@ -215,7 +219,7 @@ function ProjectDetails() {
     setShowRaiseDispute(true);
   }
 
-  function nextDisputeStep() {
+  async function nextDisputeStep() {
     if (disputeStep === 1 && !newDispute.dispute_type) {
       setActionError('Please select a dispute type');
       return;
@@ -225,6 +229,21 @@ function ProjectDetails() {
       return;
     }
     setActionError('');
+
+    // If moving to Step 3 and dispute is about uneven distribution, fetch complexity analysis
+    if (disputeStep === 2 && (newDispute.dispute_type === 'Uneven Distribution' || newDispute.sub_type === 'Uneven Distribution')) {
+      try {
+        setActionLoading(true);
+        const analysis = await disputesApi.getAnalysis(projectId);
+        setComplexityAnalysis(analysis);
+      } catch (err) {
+        console.error('Failed to fetch complexity analysis:', err);
+        setComplexityAnalysis(null);
+      } finally {
+        setActionLoading(false);
+      }
+    }
+
     setDisputeStep(disputeStep + 1);
   }
 
@@ -332,8 +351,8 @@ function ProjectDetails() {
     try {
       const analysis = JSON.parse(analysisJson);
       return {
-        totalTasks: analysis.totalTasks || 0,
-        fairDistribution: analysis.fairDistribution || 0,
+        totalComplexity: analysis.totalComplexity || 0,
+        fairComplexity: analysis.fairComplexity || 0,
         memberCount: analysis.memberCount || 0,
         suggestion: analysis.suggestion || ''
       };
@@ -518,6 +537,7 @@ function ProjectDetails() {
                       </div>
                       <div className="task-card-meta">
                         <span className="task-id">ID: {task.task_id}</span>
+                        <span className="task-difficulty">Difficulty: {task.difficulty || 5}/10</span>
                         {task.task_date_deadline && (
                           <span className="task-deadline">
                             Due: {new Date(task.task_date_deadline).toLocaleDateString()}
@@ -668,12 +688,12 @@ function ProjectDetails() {
                         <strong>Workload Analysis:</strong>
                         <div className="analysis-summary">
                           <div className="analysis-stat">
-                            <span className="stat-label">Total Tasks:</span>
-                            <span className="stat-value">{analysis.totalTasks}</span>
+                            <span className="stat-label">Total Complexity:</span>
+                            <span className="stat-value">{analysis.totalComplexity} points</span>
                           </div>
                           <div className="analysis-stat">
-                            <span className="stat-label">Fair Distribution:</span>
-                            <span className="stat-value">{analysis.fairDistribution} tasks per person</span>
+                            <span className="stat-label">Suggested Complexity per Member:</span>
+                            <span className="stat-value">{analysis.fairComplexity} points</span>
                           </div>
                           <div className="analysis-stat">
                             <span className="stat-label">Team Members:</span>
@@ -893,6 +913,20 @@ function ProjectDetails() {
                   />
                 </div>
                 <div className="form-group">
+                  <label className="form-label" htmlFor="taskDifficulty">Difficulty (1-10)</label>
+                  <input
+                    type="number"
+                    id="taskDifficulty"
+                    className="form-input"
+                    value={newTask.difficulty}
+                    onChange={(e) => setNewTask({ ...newTask, difficulty: parseInt(e.target.value) || 5 })}
+                    min="1"
+                    max="10"
+                    required
+                  />
+                  <small className="form-help">Rate the complexity: 1 = Very Easy, 10 = Very Hard</small>
+                </div>
+                <div className="form-group">
                   <label className="form-label">Assign to Members</label>
                   <div className="assignee-list">
                     {members.map(member => (
@@ -958,6 +992,20 @@ function ProjectDetails() {
                         onChange={(e) => setEditingTask({ ...editingTask, deadline: e.target.value })}
                       />
                     </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="editTaskDifficulty">Difficulty (1-10)</label>
+                      <input
+                        type="number"
+                        id="editTaskDifficulty"
+                        className="form-input"
+                        value={editingTask.difficulty}
+                        onChange={(e) => setEditingTask({ ...editingTask, difficulty: parseInt(e.target.value) || 5 })}
+                        min="1"
+                        max="10"
+                        required
+                      />
+                      <small className="form-help">Rate the complexity: 1 = Very Easy, 10 = Very Hard</small>
+                    </div>
                   </>
                 ) : (
                   <div className="task-info-display">
@@ -965,6 +1013,7 @@ function ProjectDetails() {
                     {editingTask.deadline && (
                       <p><strong>Deadline:</strong> {new Date(editingTask.deadline).toLocaleDateString()}</p>
                     )}
+                    <p><strong>Difficulty:</strong> {editingTask.difficulty}/10</p>
                   </div>
                 )}
                 <div className="form-group">
@@ -1082,18 +1131,6 @@ function ProjectDetails() {
                       />
                     </div>
 
-                    {newDispute.description.trim() && (
-                      <div className="system-suggestion-box">
-                        <div className="suggestion-header">
-                          <span className="suggestion-icon">💡</span>
-                          <strong>System Recommendation</strong>
-                        </div>
-                        <p className="suggestion-text">
-                          {getSuggestedAction(newDispute.dispute_type, newDispute.sub_type)}
-                        </p>
-                      </div>
-                    )}
-
                     <div className="form-group">
                       <label className="form-label" htmlFor="supportingContext">
                         Supporting Context / Proof (optional)
@@ -1121,6 +1158,54 @@ function ProjectDetails() {
                         <p><strong>Supporting Context:</strong> {newDispute.supporting_context.substring(0, 100)}{newDispute.supporting_context.length > 100 ? '...' : ''}</p>
                       )}
                     </div>
+
+                    <div className="system-suggestion-box">
+                      <div className="suggestion-header">
+                        <span className="suggestion-icon">💡</span>
+                        <strong>System Recommendation</strong>
+                      </div>
+                      <p className="suggestion-text">
+                        {getSuggestedAction(newDispute.dispute_type, newDispute.sub_type)}
+                      </p>
+                    </div>
+
+                    {(newDispute.dispute_type === 'Uneven Distribution' || newDispute.sub_type === 'Uneven Distribution') && complexityAnalysis && (
+                      <div className="complexity-analysis-box">
+                        <h4 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>Workload Distribution Analysis</h4>
+                        <div className="analysis-summary">
+                          <div className="analysis-stat">
+                            <span className="stat-label">Total Complexity:</span>
+                            <span className="stat-value">{complexityAnalysis.totalComplexity} points</span>
+                          </div>
+                          <div className="analysis-stat">
+                            <span className="stat-label">Fair Distribution:</span>
+                            <span className="stat-value">{complexityAnalysis.fairComplexity} points per person</span>
+                          </div>
+                          <div className="analysis-stat">
+                            <span className="stat-label">Team Members:</span>
+                            <span className="stat-value">{complexityAnalysis.memberCount}</span>
+                          </div>
+                        </div>
+                        {complexityAnalysis.currentDistribution && complexityAnalysis.currentDistribution.length > 0 && (
+                          <div style={{ marginTop: '1rem' }}>
+                            <strong style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Current Workload per Member:</strong>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {complexityAnalysis.currentDistribution.map(member => (
+                                <div key={member.userdesc} style={{ padding: '0.5rem', backgroundColor: 'var(--gray-50)', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontWeight: 500 }}>{member.name}</span>
+                                  <span style={{ color: member.totalComplexity > complexityAnalysis.fairComplexity * 1.2 ? '#dc2626' : member.totalComplexity < complexityAnalysis.fairComplexity * 0.8 ? '#2563eb' : '#059669' }}>
+                                    {member.totalComplexity} points ({member.assignedCount} tasks)
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <p style={{ marginTop: '1rem', fontSize: '0.875rem', color: 'var(--gray-600)' }}>
+                          {complexityAnalysis.suggestion}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="form-group">
                       <label className="form-label">How would you like to proceed?</label>
@@ -1684,6 +1769,15 @@ function ProjectDetails() {
           color: var(--gray-800);
           font-size: 0.9375rem;
           line-height: 1.6;
+        }
+
+        .complexity-analysis-box {
+          background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+          border: 2px solid #f59e0b;
+          border-radius: var(--radius);
+          padding: 1.25rem;
+          margin-bottom: 1.5rem;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
 
         .resolution-options {

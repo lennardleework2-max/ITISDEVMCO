@@ -75,7 +75,8 @@ export const disputes = {
   getByProject: (projectId) => request(`/disputes/project/${projectId}`),
   get: (id) => request(`/disputes/${id}`),
   create: (data) => request('/disputes', { method: 'POST', body: data }),
-  update: (id, data) => request(`/disputes/${id}`, { method: 'PATCH', body: data })
+  update: (id, data) => request(`/disputes/${id}`, { method: 'PATCH', body: data }),
+  getAnalysis: (projectId) => request(`/disputes/analysis/${projectId}`)
 };
 
 // Capacity

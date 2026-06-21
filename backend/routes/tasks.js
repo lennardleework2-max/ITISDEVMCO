@@ -137,7 +137,7 @@ router.get('/:taskId', requireAuth, async (req, res) => {
 // Create task
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { project_id, task_description, task_date_deadline, assignees } = req.body;
+    const { project_id, task_description, task_date_deadline, difficulty, assignees } = req.body;
     const userdesc = req.session.user.userdesc;
 
     // Validate
@@ -147,6 +147,15 @@ router.post('/', requireAuth, async (req, res) => {
 
     if (!task_description || !task_description.trim()) {
       return res.status(400).json({ error: 'Task description is required' });
+    }
+
+    // Validate difficulty
+    const taskDifficulty = difficulty !== undefined && difficulty !== null && difficulty !== ''
+      ? parseInt(difficulty)
+      : 5; // Default to 5 if not provided
+
+    if (isNaN(taskDifficulty) || taskDifficulty < 1 || taskDifficulty > 10) {
+      return res.status(400).json({ error: 'Difficulty must be between 1 and 10' });
     }
 
     // Check if member
@@ -168,6 +177,7 @@ router.post('/', requireAuth, async (req, res) => {
       task_id,
       task_description: cleanDescription,
       task_date_deadline: task_date_deadline || null,
+      difficulty: taskDifficulty,
       status: 'Pending'
     });
 
@@ -219,7 +229,7 @@ async function isTaskAssignee(taskId, userdesc) {
 router.patch('/:taskId', requireAuth, async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { task_description, task_date_deadline, status } = req.body;
+    const { task_description, task_date_deadline, difficulty, status } = req.body;
     const userdesc = req.session.user.userdesc;
 
     // Get task
@@ -257,6 +267,18 @@ router.patch('/:taskId', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Only project owner can update task deadline' });
       }
       updates.task_date_deadline = task_date_deadline;
+    }
+
+    // Only owners can update difficulty
+    if (difficulty !== undefined) {
+      if (!ownerCheck) {
+        return res.status(403).json({ error: 'Only project owner can update task difficulty' });
+      }
+      const taskDifficulty = parseInt(difficulty);
+      if (isNaN(taskDifficulty) || taskDifficulty < 1 || taskDifficulty > 10) {
+        return res.status(400).json({ error: 'Difficulty must be between 1 and 10' });
+      }
+      updates.difficulty = taskDifficulty;
     }
 
     // Both owners and assignees can update status

@@ -39,20 +39,22 @@ function getSuggestedAction(disputeType, subType = null) {
   return actions[disputeType] || 'Please provide details about the dispute for review.';
 }
 
-// Calculate uneven distribution suggestion
+// Calculate uneven distribution suggestion based on complexity/difficulty
 async function calculateUnevenDistribution(projectId) {
   try {
     // Get all project members
     const members = await select('projects_members', `project_id=eq.${projectId}`);
 
-    // Get all tasks
+    // Get all tasks with difficulty
     const tasks = await select('project_tasks', `project_id=eq.${projectId}`);
 
     if (!tasks || tasks.length === 0) {
       return {
         suggestion: 'No tasks have been created yet. Create tasks first to analyze distribution.',
         currentDistribution: [],
-        recommendedDistribution: []
+        totalComplexity: 0,
+        fairComplexity: 0,
+        memberCount: members.length
       };
     }
 
@@ -65,45 +67,61 @@ async function calculateUnevenDistribution(projectId) {
     const userdescsQuery = memberUserdescs.map(u => `"${u}"`).join(',');
     const users = await select('mf_users', `userdesc=in.(${userdescsQuery})&select=userdesc,fname,lname`);
 
-    // Calculate current workload per member
+    // Calculate total complexity of all tasks
+    const totalComplexity = tasks.reduce((sum, task) => sum + (task.difficulty || 5), 0);
+    const fairComplexity = Math.round(totalComplexity / memberUserdescs.length);
+
+    // Calculate current complexity per member
     const workload = memberUserdescs.map(userdesc => {
       const user = users.find(u => u.userdesc === userdesc);
-      const assignedTasks = (assignments || []).filter(a => a.userdesc === userdesc);
+      const assignedTaskIds = (assignments || [])
+        .filter(a => a.userdesc === userdesc)
+        .map(a => a.task_id);
+
+      // Get tasks assigned to this member
+      const memberTasks = tasks.filter(t => assignedTaskIds.includes(t.task_id));
+
+      // Sum up difficulty
+      const totalDifficulty = memberTasks.reduce((sum, task) => sum + (task.difficulty || 5), 0);
 
       return {
         userdesc,
         name: user ? `${user.fname} ${user.lname}` : userdesc,
-        assignedCount: assignedTasks.length,
-        completedCount: assignedTasks.filter(a => a.status === 'Completed').length,
-        pendingCount: assignedTasks.filter(a => a.status === 'Pending').length
+        assignedCount: memberTasks.length,
+        totalComplexity: totalDifficulty,
+        completedCount: memberTasks.filter(t =>
+          (assignments || []).find(a => a.task_id === t.task_id && a.userdesc === userdesc && a.status === 'Completed')
+        ).length,
+        pendingCount: memberTasks.filter(t =>
+          (assignments || []).find(a => a.task_id === t.task_id && a.userdesc === userdesc && a.status === 'Pending')
+        ).length
       };
     });
 
-    const totalAssignments = (assignments || []).length;
-    const averagePerMember = totalAssignments / memberUserdescs.length;
-    const fairDistribution = Math.ceil(averagePerMember);
-
-    // Find members who are overloaded or underloaded
-    const overloaded = workload.filter(w => w.assignedCount > fairDistribution);
-    const underloaded = workload.filter(w => w.assignedCount < fairDistribution);
+    // Find members who are overloaded or underloaded based on complexity
+    const threshold = fairComplexity * 0.2; // 20% tolerance
+    const overloaded = workload.filter(w => w.totalComplexity > fairComplexity + threshold);
+    const underloaded = workload.filter(w => w.totalComplexity < fairComplexity - threshold);
 
     let suggestion = '';
     if (overloaded.length === 0 && underloaded.length === 0) {
-      suggestion = 'Task distribution appears to be fair. Each member has approximately the same workload.';
+      suggestion = 'Complexity distribution is fair. Each member has approximately equal workload based on task difficulty.';
     } else {
-      suggestion = `Fair distribution: ~${fairDistribution} tasks per member. `;
+      suggestion = `Fair distribution: ~${fairComplexity} complexity points per member. `;
       if (overloaded.length > 0) {
-        suggestion += `Overloaded: ${overloaded.map(m => m.name).join(', ')}. `;
+        const overloadedDetails = overloaded.map(m => `${m.name} (${m.totalComplexity} pts)`).join(', ');
+        suggestion += `Overloaded: ${overloadedDetails}. `;
       }
       if (underloaded.length > 0) {
-        suggestion += `Can take more tasks: ${underloaded.map(m => m.name).join(', ')}.`;
+        const underloadedDetails = underloaded.map(m => `${m.name} (${m.totalComplexity} pts)`).join(', ');
+        suggestion += `Can take more: ${underloadedDetails}.`;
       }
     }
 
     return {
       suggestion,
-      totalTasks: totalAssignments,
-      fairDistribution: fairDistribution,
+      totalComplexity,
+      fairComplexity,
       memberCount: memberUserdescs.length,
       currentDistribution: workload
     };
@@ -112,10 +130,31 @@ async function calculateUnevenDistribution(projectId) {
     return {
       suggestion: 'Unable to calculate distribution at this time.',
       currentDistribution: [],
-      averagePerMember: 0
+      totalComplexity: 0,
+      fairComplexity: 0,
+      memberCount: 0
     };
   }
 }
+
+// Get complexity analysis for a project
+router.get('/analysis/:projectId', requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userdesc = req.session.user.userdesc;
+
+    // Check access
+    if (!(await isProjectMember(projectId, userdesc))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const analysis = await calculateUnevenDistribution(projectId);
+    res.json(analysis);
+  } catch (error) {
+    console.error('Get analysis error:', error.message);
+    res.status(500).json({ error: 'Failed to get complexity analysis' });
+  }
+});
 
 // Get all disputes for a project
 router.get('/project/:projectId', requireAuth, async (req, res) => {
