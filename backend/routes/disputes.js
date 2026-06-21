@@ -23,7 +23,7 @@ async function isProjectMember(projectId, userdesc) {
 function getSuggestedAction(disputeType, subType = null) {
   const actions = {
     'Uneven Distribution': 'System will analyze task complexity and suggest a better workload distribution among members.',
-    'Missed Deadline': 'Consider messaging the professor for deadline reconsideration. An email template will be provided.',
+    'Missed Deadline': 'Consider messaging the professor for deadline reconsideration.',
     'Unclear Task Assignment': 'Suggest scheduling a group meeting for clarity. An email notification will be sent to all members.',
     'Conflict - Unresponsive': 'System suggests sending a respectful private message first. If no response after 48 hours, you may escalate to the professor.',
     'Conflict - Uneven Distribution': 'This will be redirected to the Uneven Distribution dispute type for workload analysis.',

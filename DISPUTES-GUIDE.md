@@ -95,7 +95,6 @@ Overloaded: John Doe (25 pts). Can take more: Jane Smith (12 pts), Bob Johnson (
 
 ### Missed Deadline
 - System suggests messaging the professor for reconsideration
-- Provides email template for deadline extension request
 - Tracks if delays were communicated
 
 ### Unclear Task Assignment

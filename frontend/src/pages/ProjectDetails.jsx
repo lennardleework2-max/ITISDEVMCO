@@ -331,7 +331,7 @@ function ProjectDetails() {
   function getSuggestedAction(disputeType, subType = null) {
     const actions = {
       'Uneven Distribution': 'The system will analyze task complexity and suggest a better workload distribution among members based on current assignments.',
-      'Missed Deadline': 'Consider messaging the professor for deadline reconsideration. An email template will be provided to help you communicate the situation.',
+      'Missed Deadline': 'Consider messaging the professor for deadline reconsideration.',
       'Unclear Task Assignment': 'Schedule a group meeting for clarity. An email notification will be sent to all members to coordinate the discussion.',
       'Conflict - Unresponsive': 'Send a respectful private message first. If there is no response after 48 hours, you may escalate to the professor.',
       'Conflict - Uneven Distribution': 'The system will analyze current task distribution and provide workload balancing recommendations.',
