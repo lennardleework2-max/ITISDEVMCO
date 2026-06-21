@@ -9,6 +9,7 @@ const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const memberRoutes = require('./routes/members');
 const dashboardRoutes = require('./routes/dashboard');
+const disputeRoutes = require('./routes/disputes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -60,6 +61,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/disputes', disputeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

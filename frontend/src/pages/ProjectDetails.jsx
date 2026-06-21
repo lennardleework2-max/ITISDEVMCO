@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { dashboard, members as membersApi, tasks as tasksApi, projects as projectsApi } from '../utils/api';
+import { dashboard, members as membersApi, tasks as tasksApi, projects as projectsApi, disputes as disputesApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 function ProjectDetails() {
@@ -9,6 +9,7 @@ function ProjectDetails() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [members, setMembers] = useState([]);
+  const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -17,11 +18,23 @@ function ProjectDetails() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showEditTask, setShowEditTask] = useState(false);
+  const [showRaiseDispute, setShowRaiseDispute] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [memberEmail, setMemberEmail] = useState('');
   const [newTask, setNewTask] = useState({ description: '', deadline: '', assignees: [] });
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+
+  // Dispute modal state
+  const [disputeStep, setDisputeStep] = useState(1);
+  const [newDispute, setNewDispute] = useState({
+    dispute_type: '',
+    sub_type: '',
+    description: '',
+    supporting_context: '',
+    related_member_userdesc: '',
+    resolution_choice: ''
+  });
 
   const isOwner = data?.project?.role === 'Owner';
 
@@ -36,12 +49,14 @@ function ProjectDetails() {
 
   async function loadData() {
     try {
-      const [dashboardData, membersData] = await Promise.all([
+      const [dashboardData, membersData, disputesData] = await Promise.all([
         dashboard.getProject(projectId),
-        membersApi.getAll(projectId)
+        membersApi.getAll(projectId),
+        disputesApi.getByProject(projectId)
       ]);
       setData(dashboardData);
       setMembers(membersData);
+      setDisputes(disputesData);
     } catch (err) {
       setError(err.message || 'Failed to load project');
     } finally {
@@ -172,6 +187,72 @@ function ProjectDetails() {
     }
   }
 
+  function openRaiseDispute() {
+    setDisputeStep(1);
+    setNewDispute({
+      dispute_type: '',
+      sub_type: '',
+      description: '',
+      supporting_context: '',
+      related_member_userdesc: '',
+      resolution_choice: ''
+    });
+    setActionError('');
+    setShowRaiseDispute(true);
+  }
+
+  function nextDisputeStep() {
+    if (disputeStep === 1 && !newDispute.dispute_type) {
+      setActionError('Please select a dispute type');
+      return;
+    }
+    if (disputeStep === 2 && !newDispute.description.trim()) {
+      setActionError('Please provide a description');
+      return;
+    }
+    setActionError('');
+    setDisputeStep(disputeStep + 1);
+  }
+
+  function prevDisputeStep() {
+    setActionError('');
+    setDisputeStep(disputeStep - 1);
+  }
+
+  async function handleRaiseDispute(e) {
+    e.preventDefault();
+
+    if (!newDispute.resolution_choice) {
+      setActionError('Please choose a resolution approach');
+      return;
+    }
+
+    setActionLoading(true);
+    setActionError('');
+
+    try {
+      await disputesApi.create({
+        project_id: projectId,
+        ...newDispute
+      });
+      setShowRaiseDispute(false);
+      loadData();
+    } catch (err) {
+      setActionError(err.message || 'Failed to raise dispute');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleResolveDispute(disputeId) {
+    try {
+      await disputesApi.update(disputeId, { status: 'Resolved' });
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to resolve dispute');
+    }
+  }
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -222,6 +303,12 @@ function ProjectDetails() {
           onClick={() => setActiveTab('members')}
         >
           Members ({data?.stats?.totalMembers || 0})
+        </button>
+        <button
+          className={`tab ${activeTab === 'disputes' ? 'active' : ''}`}
+          onClick={() => setActiveTab('disputes')}
+        >
+          Disputes ({disputes?.length || 0})
         </button>
       </div>
 
@@ -446,6 +533,89 @@ function ProjectDetails() {
         </div>
       )}
 
+      {activeTab === 'disputes' && (
+        <div className="disputes-section">
+          <div className="mb-4">
+            <button className="btn btn-primary" onClick={openRaiseDispute}>
+              + Raise Dispute
+            </button>
+          </div>
+
+          {disputes.length > 0 ? (
+            <div className="disputes-list">
+              {disputes.map(dispute => (
+                <div key={dispute.dispute_id} className="dispute-card">
+                  <div className="dispute-header">
+                    <div>
+                      <h3 className="dispute-title">{dispute.dispute_type}</h3>
+                      {dispute.sub_type && (
+                        <span className="dispute-subtype">{dispute.sub_type}</span>
+                      )}
+                    </div>
+                    <span className={`badge badge-${dispute.status.toLowerCase()}`}>
+                      {dispute.status}
+                    </span>
+                  </div>
+
+                  <p className="dispute-description">{dispute.description}</p>
+
+                  {dispute.suggested_action && (
+                    <div className="dispute-suggestion">
+                      <strong>Suggested Action:</strong>
+                      <p>{dispute.suggested_action}</p>
+                    </div>
+                  )}
+
+                  {dispute.distribution_analysis && (
+                    <div className="dispute-analysis">
+                      <strong>Workload Analysis:</strong>
+                      <pre className="analysis-data">
+                        {JSON.stringify(JSON.parse(dispute.distribution_analysis), null, 2)}
+                      </pre>
+                    </div>
+                  )}
+
+                  <div className="dispute-meta">
+                    <span className="text-sm text-gray">
+                      Raised by: {dispute.raised_by_name}
+                    </span>
+                    <span className="text-sm text-gray">
+                      {new Date(dispute.created_at).toLocaleDateString()}
+                    </span>
+                    {dispute.resolution_choice && dispute.resolution_choice !== 'Pending' && (
+                      <span className="text-sm text-gray">
+                        Action: {dispute.resolution_choice}
+                      </span>
+                    )}
+                  </div>
+
+                  {dispute.status === 'Ongoing' && (
+                    <div className="dispute-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleResolveDispute(dispute.dispute_id)}
+                      >
+                        Mark as Resolved
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="card">
+              <div className="empty-state">
+                <div className="empty-state-icon">⚖️</div>
+                <h3 className="empty-state-title">No disputes raised</h3>
+                <p className="empty-state-text">
+                  Disputes help resolve collaboration issues and track concerns
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Member Modal */}
       {showAddMember && (
         <div className="modal-overlay" onClick={() => setShowAddMember(false)}>
@@ -616,6 +786,178 @@ function ProjectDetails() {
                 <button type="submit" className="btn btn-primary" disabled={actionLoading}>
                   {actionLoading ? 'Saving...' : 'Save Changes'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Raise Dispute Modal */}
+      {showRaiseDispute && (
+        <div className="modal-overlay" onClick={() => setShowRaiseDispute(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Raise Dispute - Step {disputeStep} of 3</h2>
+              <button className="modal-close" onClick={() => setShowRaiseDispute(false)}>&times;</button>
+            </div>
+            <form onSubmit={disputeStep === 3 ? handleRaiseDispute : (e) => { e.preventDefault(); nextDisputeStep(); }}>
+              <div className="modal-body">
+                {actionError && <div className="alert alert-error">{actionError}</div>}
+
+                {/* Step 1: Select Dispute Type */}
+                {disputeStep === 1 && (
+                  <div className="form-group">
+                    <label className="form-label">What type of dispute are you raising?</label>
+                    <div className="dispute-types">
+                      {['Uneven Distribution', 'Missed Deadline', 'Unclear Task Assignment', 'Conflict with Groupmate'].map(type => (
+                        <label key={type} className="dispute-type-option">
+                          <input
+                            type="radio"
+                            name="dispute_type"
+                            value={type}
+                            checked={newDispute.dispute_type === type}
+                            onChange={(e) => setNewDispute({ ...newDispute, dispute_type: e.target.value, sub_type: '' })}
+                          />
+                          <span>{type}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {newDispute.dispute_type === 'Conflict with Groupmate' && (
+                      <div className="form-group mt-3">
+                        <label className="form-label">Reason for conflict:</label>
+                        <div className="dispute-types">
+                          {['Unresponsive', 'Uneven Distribution', 'Missed Deadline', 'Different Quality Expectation', 'Others'].map(sub => (
+                            <label key={sub} className="dispute-type-option">
+                              <input
+                                type="radio"
+                                name="sub_type"
+                                value={sub}
+                                checked={newDispute.sub_type === sub}
+                                onChange={(e) => setNewDispute({ ...newDispute, sub_type: e.target.value })}
+                              />
+                              <span>{sub}</span>
+                            </label>
+                          ))}
+                        </div>
+
+                        <div className="form-group mt-3">
+                          <label className="form-label">Related Member:</label>
+                          <select
+                            className="form-select"
+                            value={newDispute.related_member_userdesc}
+                            onChange={(e) => setNewDispute({ ...newDispute, related_member_userdesc: e.target.value })}
+                          >
+                            <option value="">Select member (optional)</option>
+                            {members.filter(m => m.userdesc !== user?.userdesc).map(member => (
+                              <option key={member.userdesc} value={member.userdesc}>
+                                {member.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 2: Description and Proof */}
+                {disputeStep === 2 && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="disputeDescription">
+                        Describe the situation *
+                      </label>
+                      <textarea
+                        id="disputeDescription"
+                        className="form-textarea"
+                        value={newDispute.description}
+                        onChange={(e) => setNewDispute({ ...newDispute, description: e.target.value })}
+                        placeholder="Provide details about the dispute..."
+                        rows="4"
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="supportingContext">
+                        Supporting Context / Proof (optional)
+                      </label>
+                      <textarea
+                        id="supportingContext"
+                        className="form-textarea"
+                        value={newDispute.supporting_context}
+                        onChange={(e) => setNewDispute({ ...newDispute, supporting_context: e.target.value })}
+                        placeholder="Add any supporting information, messages, or evidence..."
+                        rows="3"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Step 3: Choose Action */}
+                {disputeStep === 3 && (
+                  <div>
+                    <div className="dispute-summary">
+                      <h3>Review Your Dispute</h3>
+                      <p><strong>Type:</strong> {newDispute.dispute_type} {newDispute.sub_type && `- ${newDispute.sub_type}`}</p>
+                      <p><strong>Description:</strong> {newDispute.description}</p>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">How would you like to proceed?</label>
+                      <div className="resolution-options">
+                        <label className="resolution-option">
+                          <input
+                            type="radio"
+                            name="resolution_choice"
+                            value="Resolve within group"
+                            checked={newDispute.resolution_choice === 'Resolve within group'}
+                            onChange={(e) => setNewDispute({ ...newDispute, resolution_choice: e.target.value })}
+                          />
+                          <div>
+                            <strong>Resolve within group</strong>
+                            <p className="text-sm text-gray">Address this with group members first</p>
+                          </div>
+                        </label>
+
+                        <label className="resolution-option">
+                          <input
+                            type="radio"
+                            name="resolution_choice"
+                            value="Escalate to professor"
+                            checked={newDispute.resolution_choice === 'Escalate to professor'}
+                            onChange={(e) => setNewDispute({ ...newDispute, resolution_choice: e.target.value })}
+                          />
+                          <div>
+                            <strong>Escalate to professor</strong>
+                            <p className="text-sm text-gray">Request professor intervention</p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                {disputeStep > 1 && (
+                  <button type="button" className="btn btn-secondary" onClick={prevDisputeStep}>
+                    Back
+                  </button>
+                )}
+                <button type="button" className="btn btn-secondary" onClick={() => setShowRaiseDispute(false)}>
+                  Cancel
+                </button>
+                {disputeStep < 3 ? (
+                  <button type="submit" className="btn btn-primary">
+                    Next
+                  </button>
+                ) : (
+                  <button type="submit" className="btn btn-primary" disabled={actionLoading}>
+                    {actionLoading ? 'Submitting...' : 'Raise Dispute'}
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -797,6 +1139,195 @@ function ProjectDetails() {
           margin-bottom: 0;
         }
 
+        .modal-lg {
+          max-width: 600px;
+        }
+
+        .disputes-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .dispute-card {
+          background-color: var(--white);
+          border-radius: var(--radius);
+          padding: 1.25rem;
+          box-shadow: var(--shadow-sm);
+        }
+
+        .dispute-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 0.75rem;
+        }
+
+        .dispute-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: var(--gray-800);
+          margin-bottom: 0.25rem;
+        }
+
+        .dispute-subtype {
+          font-size: 0.8125rem;
+          color: var(--gray-500);
+        }
+
+        .dispute-description {
+          margin-bottom: 0.75rem;
+          color: var(--gray-700);
+        }
+
+        .dispute-suggestion {
+          background-color: var(--primary-bg);
+          padding: 0.75rem;
+          border-radius: var(--radius);
+          margin-bottom: 0.75rem;
+        }
+
+        .dispute-suggestion strong {
+          display: block;
+          margin-bottom: 0.25rem;
+          color: var(--primary-dark);
+        }
+
+        .dispute-suggestion p {
+          margin: 0;
+          font-size: 0.875rem;
+          color: var(--gray-700);
+        }
+
+        .dispute-analysis {
+          background-color: var(--gray-50);
+          padding: 0.75rem;
+          border-radius: var(--radius);
+          margin-bottom: 0.75rem;
+        }
+
+        .dispute-analysis strong {
+          display: block;
+          margin-bottom: 0.5rem;
+          color: var(--gray-800);
+        }
+
+        .analysis-data {
+          font-size: 0.75rem;
+          color: var(--gray-600);
+          margin: 0;
+          overflow-x: auto;
+          white-space: pre-wrap;
+        }
+
+        .dispute-meta {
+          display: flex;
+          gap: 1rem;
+          flex-wrap: wrap;
+          margin-bottom: 0.75rem;
+        }
+
+        .dispute-actions {
+          display: flex;
+          gap: 0.5rem;
+          justify-content: flex-end;
+        }
+
+        .dispute-types {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .dispute-type-option {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          background-color: var(--gray-50);
+          border: 2px solid var(--gray-200);
+          border-radius: var(--radius);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .dispute-type-option:hover {
+          background-color: var(--gray-100);
+        }
+
+        .dispute-type-option input[type="radio"] {
+          width: 18px;
+          height: 18px;
+          cursor: pointer;
+        }
+
+        .dispute-type-option input[type="radio"]:checked + span {
+          font-weight: 600;
+          color: var(--primary-dark);
+        }
+
+        .dispute-summary {
+          background-color: var(--gray-50);
+          padding: 1rem;
+          border-radius: var(--radius);
+          margin-bottom: 1rem;
+        }
+
+        .dispute-summary h3 {
+          font-size: 1rem;
+          margin-bottom: 0.75rem;
+          color: var(--gray-800);
+        }
+
+        .dispute-summary p {
+          margin-bottom: 0.5rem;
+          font-size: 0.875rem;
+          color: var(--gray-700);
+        }
+
+        .dispute-summary p:last-child {
+          margin-bottom: 0;
+        }
+
+        .resolution-options {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .resolution-option {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.75rem;
+          padding: 1rem;
+          background-color: var(--gray-50);
+          border: 2px solid var(--gray-200);
+          border-radius: var(--radius);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .resolution-option:hover {
+          background-color: var(--gray-100);
+        }
+
+        .resolution-option input[type="radio"] {
+          width: 18px;
+          height: 18px;
+          margin-top: 0.25rem;
+          cursor: pointer;
+        }
+
+        .badge-ongoing {
+          background-color: var(--warning-light);
+          color: #b45309;
+        }
+
+        .badge-resolved {
+          background-color: var(--success-light);
+          color: var(--primary-dark);
+        }
+
         @media (max-width: 640px) {
           .task-card {
             flex-direction: column;
@@ -815,6 +1346,20 @@ function ProjectDetails() {
 
           .tab {
             white-space: nowrap;
+          }
+
+          .modal-lg {
+            max-width: 100%;
+          }
+
+          .dispute-header {
+            flex-direction: column;
+            gap: 0.5rem;
+          }
+
+          .dispute-meta {
+            flex-direction: column;
+            gap: 0.25rem;
           }
         }
       `}</style>

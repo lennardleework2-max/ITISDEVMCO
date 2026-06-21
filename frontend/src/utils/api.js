@@ -70,10 +70,19 @@ export const dashboard = {
   getUser: () => request('/dashboard/user')
 };
 
+// Disputes
+export const disputes = {
+  getByProject: (projectId) => request(`/disputes/project/${projectId}`),
+  get: (id) => request(`/disputes/${id}`),
+  create: (data) => request('/disputes', { method: 'POST', body: data }),
+  update: (id, data) => request(`/disputes/${id}`, { method: 'PATCH', body: data })
+};
+
 export default {
   auth,
   projects,
   members,
   tasks,
-  dashboard
+  dashboard,
+  disputes
 };

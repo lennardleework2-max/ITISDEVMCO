@@ -11,6 +11,12 @@ A web-based system to help students and group leaders track individual contribut
 - Track task status (Pending, In Progress, Completed)
 - View contribution dashboards
 - Member contribution tracking and statistics
+- **Dispute handling system** - Raise and track collaboration concerns:
+  - Uneven distribution (with automatic workload analysis)
+  - Missed deadlines
+  - Unclear task assignments
+  - Conflicts with groupmates
+  - Suggested actions and resolution tracking
 
 ## Tech Stack
 
@@ -89,6 +95,26 @@ Ensure your Supabase database has the following tables:
 - task_date_finished (TIMESTAMP)
 - status (VARCHAR 100)
 - remarks (VARCHAR 100)
+
+### disputes
+- recid (BIGINT, identity, primary key)
+- dispute_id (VARCHAR 100, UNIQUE NOT NULL)
+- project_id (VARCHAR 100, NOT NULL)
+- raised_by_userdesc (VARCHAR 100, NOT NULL)
+- dispute_type (VARCHAR 100, NOT NULL)
+- sub_type (VARCHAR 100)
+- description (TEXT, NOT NULL)
+- supporting_context (TEXT)
+- related_member_userdesc (VARCHAR 100)
+- suggested_action (TEXT)
+- distribution_analysis (TEXT)
+- resolution_choice (VARCHAR 100)
+- resolution_notes (TEXT)
+- status (VARCHAR 50, DEFAULT 'Ongoing')
+- created_at (TIMESTAMP, DEFAULT NOW())
+- resolved_at (TIMESTAMP)
+
+**Note:** Run the SQL file `backend/database-schema-disputes.sql` in your Supabase SQL editor to create this table.
 
 ## Local Development Setup
 
@@ -229,6 +255,7 @@ The system generates IDs with the following format:
 - Projects: `PJT-000001`, `PJT-000002`, ...
 - Tasks: `TSK-000001`, `TSK-000002`, ...
 - Task Assignees: `TAA-000001`, `TAA-000002`, ...
+- Disputes: `DIS-000001`, `DIS-000002`, ...
 
 These IDs are auto-generated and cannot be edited.
 

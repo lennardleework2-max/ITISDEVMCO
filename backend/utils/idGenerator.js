@@ -44,10 +44,16 @@ async function generateTaskAssigneeId() {
   return generateId('project_task_assignees', 'task_assignees_id', 'TAA');
 }
 
+// Generate dispute ID (DIS-XXXXXX)
+async function generateDisputeId() {
+  return generateId('disputes', 'dispute_id', 'DIS');
+}
+
 module.exports = {
   generateId,
   generateUserId,
   generateProjectId,
   generateTaskId,
-  generateTaskAssigneeId
+  generateTaskAssigneeId,
+  generateDisputeId
 };
