@@ -17,6 +17,13 @@ A web-based system to help students and group leaders track individual contribut
   - Unclear task assignments
   - Conflicts with groupmates
   - Suggested actions and resolution tracking
+- **Capacity and Well-being Management** - Share availability and current commitments:
+  - Log internships, part-time jobs, and work hours
+  - Share organization affiliations and roles
+  - Communicate other school responsibilities
+  - Indicate personal commitments affecting availability
+  - Set estimated hours available per week for the project
+  - Promotes open communication and realistic task distribution
 
 ## Tech Stack
 
@@ -115,6 +122,22 @@ Ensure your Supabase database has the following tables:
 - resolved_at (TIMESTAMP)
 
 **Note:** Run the SQL file `backend/database-schema-disputes.sql` in your Supabase SQL editor to create this table.
+
+### member_capacity
+- recid (BIGINT, identity, primary key)
+- project_id (VARCHAR 100, NOT NULL)
+- userdesc (VARCHAR 100, NOT NULL)
+- internship (TEXT)
+- organizations (TEXT)
+- other_school_work (TEXT)
+- personal_responsibilities (TEXT)
+- availability_hours_per_week (INT)
+- notes (TEXT)
+- created_at (TIMESTAMP, DEFAULT NOW())
+- updated_at (TIMESTAMP, DEFAULT NOW())
+- UNIQUE(project_id, userdesc)
+
+**Note:** Run the SQL file `backend/database-schema-capacity.sql` in your Supabase SQL editor to create this table.
 
 ## Local Development Setup
 

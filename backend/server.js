@@ -10,6 +10,7 @@ const taskRoutes = require('./routes/tasks');
 const memberRoutes = require('./routes/members');
 const dashboardRoutes = require('./routes/dashboard');
 const disputeRoutes = require('./routes/disputes');
+const capacityRoutes = require('./routes/capacity');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -62,6 +63,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/disputes', disputeRoutes);
+app.use('/api/capacity', capacityRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

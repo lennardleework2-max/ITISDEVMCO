@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { dashboard, members as membersApi, tasks as tasksApi, projects as projectsApi, disputes as disputesApi } from '../utils/api';
+import { dashboard, members as membersApi, tasks as tasksApi, projects as projectsApi, disputes as disputesApi, capacity as capacityApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 function ProjectDetails() {
@@ -10,6 +10,7 @@ function ProjectDetails() {
   const [data, setData] = useState(null);
   const [members, setMembers] = useState([]);
   const [disputes, setDisputes] = useState([]);
+  const [capacities, setCapacities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -19,6 +20,7 @@ function ProjectDetails() {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showEditTask, setShowEditTask] = useState(false);
   const [showRaiseDispute, setShowRaiseDispute] = useState(false);
+  const [showSetCapacity, setShowSetCapacity] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [memberEmail, setMemberEmail] = useState('');
   const [newTask, setNewTask] = useState({ description: '', deadline: '', assignees: [] });
@@ -36,6 +38,16 @@ function ProjectDetails() {
     resolution_choice: ''
   });
 
+  // Capacity modal state
+  const [capacityForm, setCapacityForm] = useState({
+    internship: '',
+    organizations: '',
+    other_school_work: '',
+    personal_responsibilities: '',
+    availability_hours_per_week: '',
+    notes: ''
+  });
+
   const isOwner = data?.project?.role === 'Owner';
 
   // Check if current user is assigned to a task
@@ -49,14 +61,16 @@ function ProjectDetails() {
 
   async function loadData() {
     try {
-      const [dashboardData, membersData, disputesData] = await Promise.all([
+      const [dashboardData, membersData, disputesData, capacityData] = await Promise.all([
         dashboard.getProject(projectId),
         membersApi.getAll(projectId),
-        disputesApi.getByProject(projectId)
+        disputesApi.getByProject(projectId),
+        capacityApi.getByProject(projectId)
       ]);
       setData(dashboardData);
       setMembers(membersData);
       setDisputes(disputesData);
+      setCapacities(capacityData);
     } catch (err) {
       setError(err.message || 'Failed to load project');
     } finally {
@@ -253,6 +267,48 @@ function ProjectDetails() {
     }
   }
 
+  function openSetCapacity() {
+    // Load existing capacity if available
+    const existingCapacity = capacities.find(c => c.userdesc === user?.userdesc);
+    if (existingCapacity) {
+      setCapacityForm({
+        internship: existingCapacity.internship || '',
+        organizations: existingCapacity.organizations || '',
+        other_school_work: existingCapacity.other_school_work || '',
+        personal_responsibilities: existingCapacity.personal_responsibilities || '',
+        availability_hours_per_week: existingCapacity.availability_hours_per_week || '',
+        notes: existingCapacity.notes || ''
+      });
+    } else {
+      setCapacityForm({
+        internship: '',
+        organizations: '',
+        other_school_work: '',
+        personal_responsibilities: '',
+        availability_hours_per_week: '',
+        notes: ''
+      });
+    }
+    setActionError('');
+    setShowSetCapacity(true);
+  }
+
+  async function handleSaveCapacity(e) {
+    e.preventDefault();
+    setActionLoading(true);
+    setActionError('');
+
+    try {
+      await capacityApi.save(projectId, capacityForm);
+      setShowSetCapacity(false);
+      loadData();
+    } catch (err) {
+      setActionError(err.message || 'Failed to save capacity information');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -309,6 +365,12 @@ function ProjectDetails() {
           onClick={() => setActiveTab('disputes')}
         >
           Disputes ({disputes?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeTab === 'capacity' ? 'active' : ''}`}
+          onClick={() => setActiveTab('capacity')}
+        >
+          Capacity
         </button>
       </div>
 
@@ -609,6 +671,97 @@ function ProjectDetails() {
                 <h3 className="empty-state-title">No disputes raised</h3>
                 <p className="empty-state-text">
                   Disputes help resolve collaboration issues and track concerns
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'capacity' && (
+        <div className="capacity-section">
+          <div className="mb-4">
+            <button className="btn btn-primary" onClick={openSetCapacity}>
+              {capacities.find(c => c.userdesc === user?.userdesc) ? 'Update' : 'Set'} My Capacity
+            </button>
+          </div>
+
+          <p className="capacity-intro">
+            Share your current responsibilities to help your team understand your availability and workload.
+            This promotes open communication and realistic task distribution.
+          </p>
+
+          {capacities.length > 0 ? (
+            <div className="capacity-list">
+              {capacities.map(capacity => (
+                <div key={capacity.userdesc} className="capacity-card">
+                  <div className="capacity-header">
+                    <h3 className="capacity-name">{capacity.fullName}</h3>
+                    {capacity.availability_hours_per_week && (
+                      <span className="capacity-hours">
+                        {capacity.availability_hours_per_week}h/week available
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="capacity-details">
+                    {capacity.internship && (
+                      <div className="capacity-item">
+                        <strong>Internship:</strong>
+                        <p>{capacity.internship}</p>
+                      </div>
+                    )}
+
+                    {capacity.organizations && (
+                      <div className="capacity-item">
+                        <strong>Organizations:</strong>
+                        <p>{capacity.organizations}</p>
+                      </div>
+                    )}
+
+                    {capacity.other_school_work && (
+                      <div className="capacity-item">
+                        <strong>Other School Work:</strong>
+                        <p>{capacity.other_school_work}</p>
+                      </div>
+                    )}
+
+                    {capacity.personal_responsibilities && (
+                      <div className="capacity-item">
+                        <strong>Personal Responsibilities:</strong>
+                        <p>{capacity.personal_responsibilities}</p>
+                      </div>
+                    )}
+
+                    {capacity.notes && (
+                      <div className="capacity-item">
+                        <strong>Notes:</strong>
+                        <p>{capacity.notes}</p>
+                      </div>
+                    )}
+
+                    {!capacity.internship && !capacity.organizations &&
+                     !capacity.other_school_work && !capacity.personal_responsibilities &&
+                     !capacity.notes && (
+                      <p className="text-sm text-gray">No additional details provided</p>
+                    )}
+                  </div>
+
+                  <div className="capacity-meta">
+                    <span className="text-sm text-gray">
+                      Last updated: {new Date(capacity.updated_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="card">
+              <div className="empty-state">
+                <div className="empty-state-icon">📋</div>
+                <h3 className="empty-state-title">No capacity information yet</h3>
+                <p className="empty-state-text">
+                  Team members can share their availability and current responsibilities here
                 </p>
               </div>
             </div>
@@ -958,6 +1111,123 @@ function ProjectDetails() {
                     {actionLoading ? 'Submitting...' : 'Raise Dispute'}
                   </button>
                 )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Set Capacity Modal */}
+      {showSetCapacity && (
+        <div className="modal-overlay" onClick={() => setShowSetCapacity(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Set Your Capacity & Responsibilities</h2>
+              <button className="modal-close" onClick={() => setShowSetCapacity(false)}>&times;</button>
+            </div>
+            <form onSubmit={handleSaveCapacity}>
+              <div className="modal-body">
+                {actionError && <div className="alert alert-error">{actionError}</div>}
+
+                <p className="capacity-modal-intro">
+                  Help your team understand your availability by sharing your current commitments.
+                  This information is visible to all project members.
+                </p>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="internship">
+                    Internship / Part-time Job
+                  </label>
+                  <textarea
+                    id="internship"
+                    className="form-textarea"
+                    value={capacityForm.internship}
+                    onChange={(e) => setCapacityForm({ ...capacityForm, internship: e.target.value })}
+                    placeholder="e.g., Software Engineering Intern at XYZ Corp (20hrs/week)"
+                    rows="2"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="organizations">
+                    Organizations & Affiliations
+                  </label>
+                  <textarea
+                    id="organizations"
+                    className="form-textarea"
+                    value={capacityForm.organizations}
+                    onChange={(e) => setCapacityForm({ ...capacityForm, organizations: e.target.value })}
+                    placeholder="e.g., Student Council Secretary, Computer Society Member"
+                    rows="2"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="otherSchoolWork">
+                    Other School Responsibilities
+                  </label>
+                  <textarea
+                    id="otherSchoolWork"
+                    className="form-textarea"
+                    value={capacityForm.other_school_work}
+                    onChange={(e) => setCapacityForm({ ...capacityForm, other_school_work: e.target.value })}
+                    placeholder="e.g., Taking 6 other courses, TA for Database class"
+                    rows="2"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="personalResponsibilities">
+                    Personal Responsibilities
+                  </label>
+                  <textarea
+                    id="personalResponsibilities"
+                    className="form-textarea"
+                    value={capacityForm.personal_responsibilities}
+                    onChange={(e) => setCapacityForm({ ...capacityForm, personal_responsibilities: e.target.value })}
+                    placeholder="e.g., Family commitments, health considerations (optional)"
+                    rows="2"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="availabilityHours">
+                    Estimated Hours Available Per Week for This Project
+                  </label>
+                  <input
+                    type="number"
+                    id="availabilityHours"
+                    className="form-input"
+                    value={capacityForm.availability_hours_per_week}
+                    onChange={(e) => setCapacityForm({ ...capacityForm, availability_hours_per_week: e.target.value })}
+                    placeholder="e.g., 10"
+                    min="0"
+                    max="168"
+                  />
+                  <small className="form-help">This helps the team plan realistic task assignments</small>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="notes">
+                    Additional Notes
+                  </label>
+                  <textarea
+                    id="notes"
+                    className="form-textarea"
+                    value={capacityForm.notes}
+                    onChange={(e) => setCapacityForm({ ...capacityForm, notes: e.target.value })}
+                    placeholder="Any other information about your schedule or availability"
+                    rows="2"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowSetCapacity(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
+                  {actionLoading ? 'Saving...' : 'Save Capacity Information'}
+                </button>
               </div>
             </form>
           </div>
@@ -1326,6 +1596,98 @@ function ProjectDetails() {
         .badge-resolved {
           background-color: var(--success-light);
           color: var(--primary-dark);
+        }
+
+        .capacity-intro {
+          margin-bottom: 1.5rem;
+          padding: 1rem;
+          background-color: var(--primary-bg);
+          border-radius: var(--radius);
+          color: var(--gray-700);
+          font-size: 0.875rem;
+        }
+
+        .capacity-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .capacity-card {
+          background-color: var(--white);
+          border-radius: var(--radius);
+          padding: 1.25rem;
+          box-shadow: var(--shadow-sm);
+        }
+
+        .capacity-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 1rem;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .capacity-name {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: var(--gray-800);
+          margin: 0;
+        }
+
+        .capacity-hours {
+          background-color: var(--primary-bg);
+          color: var(--primary-dark);
+          padding: 0.25rem 0.75rem;
+          border-radius: 999px;
+          font-size: 0.8125rem;
+          font-weight: 500;
+        }
+
+        .capacity-details {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .capacity-item strong {
+          display: block;
+          font-size: 0.8125rem;
+          color: var(--gray-600);
+          margin-bottom: 0.25rem;
+          text-transform: uppercase;
+          letter-spacing: 0.025em;
+        }
+
+        .capacity-item p {
+          margin: 0;
+          color: var(--gray-700);
+          font-size: 0.9375rem;
+          line-height: 1.5;
+        }
+
+        .capacity-meta {
+          margin-top: 1rem;
+          padding-top: 0.75rem;
+          border-top: 1px solid var(--gray-200);
+        }
+
+        .capacity-modal-intro {
+          margin-bottom: 1.5rem;
+          padding: 0.875rem;
+          background-color: var(--primary-bg);
+          border-radius: var(--radius);
+          color: var(--gray-700);
+          font-size: 0.875rem;
+          line-height: 1.5;
+        }
+
+        .form-help {
+          display: block;
+          margin-top: 0.375rem;
+          font-size: 0.8125rem;
+          color: var(--gray-500);
         }
 
         @media (max-width: 640px) {

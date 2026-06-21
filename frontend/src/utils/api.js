@@ -78,11 +78,19 @@ export const disputes = {
   update: (id, data) => request(`/disputes/${id}`, { method: 'PATCH', body: data })
 };
 
+// Capacity
+export const capacity = {
+  getByProject: (projectId) => request(`/capacity/${projectId}`),
+  get: (projectId, userdesc) => request(`/capacity/${projectId}/${userdesc}`),
+  save: (projectId, data) => request(`/capacity/${projectId}`, { method: 'POST', body: data })
+};
+
 export default {
   auth,
   projects,
   members,
   tasks,
   dashboard,
-  disputes
+  disputes,
+  capacity
 };
