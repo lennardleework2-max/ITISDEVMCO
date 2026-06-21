@@ -309,6 +309,25 @@ function ProjectDetails() {
     }
   }
 
+  function getSuggestedAction(disputeType, subType = null) {
+    const actions = {
+      'Uneven Distribution': 'The system will analyze task complexity and suggest a better workload distribution among members based on current assignments.',
+      'Missed Deadline': 'Consider messaging the professor for deadline reconsideration. An email template will be provided to help you communicate the situation.',
+      'Unclear Task Assignment': 'Schedule a group meeting for clarity. An email notification will be sent to all members to coordinate the discussion.',
+      'Conflict - Unresponsive': 'Send a respectful private message first. If there is no response after 48 hours, you may escalate to the professor.',
+      'Conflict - Uneven Distribution': 'The system will analyze current task distribution and provide workload balancing recommendations.',
+      'Conflict - Missed Deadline': 'Indicate if the delay was communicated. The system suggests an extension request or professor escalation if needed.',
+      'Conflict - Different Quality Expectation': 'Clarify expected output standards, add revision notes to tasks, or request professor guidance if the issue remains unresolved.',
+      'Conflict - Others': 'Describe the situation in detail. You can then choose to resolve within the group or escalate to the professor with an email template.'
+    };
+
+    if (disputeType === 'Conflict with Groupmate' && subType) {
+      return actions[`Conflict - ${subType}`] || actions['Conflict - Others'];
+    }
+
+    return actions[disputeType] || 'Please provide details about the dispute for review.';
+  }
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -1048,13 +1067,23 @@ function ProjectDetails() {
                   </>
                 )}
 
-                {/* Step 3: Choose Action */}
+                {/* Step 3: System Suggestion and Resolution Choice */}
                 {disputeStep === 3 && (
                   <div>
                     <div className="dispute-summary">
                       <h3>Review Your Dispute</h3>
                       <p><strong>Type:</strong> {newDispute.dispute_type} {newDispute.sub_type && `- ${newDispute.sub_type}`}</p>
                       <p><strong>Description:</strong> {newDispute.description}</p>
+                    </div>
+
+                    <div className="system-suggestion-box">
+                      <div className="suggestion-header">
+                        <span className="suggestion-icon">💡</span>
+                        <strong>System Recommendation</strong>
+                      </div>
+                      <p className="suggestion-text">
+                        {getSuggestedAction(newDispute.dispute_type, newDispute.sub_type)}
+                      </p>
                     </div>
 
                     <div className="form-group">
@@ -1557,6 +1586,39 @@ function ProjectDetails() {
 
         .dispute-summary p:last-child {
           margin-bottom: 0;
+        }
+
+        .system-suggestion-box {
+          background: linear-gradient(135deg, #e0f2fe 0%, #e0e7ff 100%);
+          border: 2px solid var(--primary);
+          border-radius: var(--radius);
+          padding: 1.25rem;
+          margin-bottom: 1.5rem;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .suggestion-header {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 0.75rem;
+        }
+
+        .suggestion-icon {
+          font-size: 1.5rem;
+        }
+
+        .suggestion-header strong {
+          font-size: 1rem;
+          color: var(--primary-dark);
+          font-weight: 600;
+        }
+
+        .suggestion-text {
+          margin: 0;
+          color: var(--gray-800);
+          font-size: 0.9375rem;
+          line-height: 1.6;
         }
 
         .resolution-options {
