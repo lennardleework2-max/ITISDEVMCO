@@ -137,7 +137,7 @@ router.get('/:taskId', requireAuth, async (req, res) => {
 // Create task
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { project_id, task_description, task_date_deadline, difficulty, assignees } = req.body;
+    const { project_id, task_description, task_date_deadline, difficulty, task_type, assignees } = req.body;
     const userdesc = req.session.user.userdesc;
 
     // Validate
@@ -157,6 +157,10 @@ router.post('/', requireAuth, async (req, res) => {
     if (isNaN(taskDifficulty) || taskDifficulty < 1 || taskDifficulty > 10) {
       return res.status(400).json({ error: 'Difficulty must be between 1 and 10' });
     }
+
+    // Validate and set task type
+    const validTaskTypes = ['Development', 'Documentation', 'Research', 'Design', 'Testing', 'Planning', 'General'];
+    const taskType = task_type && validTaskTypes.includes(task_type) ? task_type : 'General';
 
     // Check if member
     if (!(await isProjectMember(project_id, userdesc))) {
@@ -178,6 +182,7 @@ router.post('/', requireAuth, async (req, res) => {
       task_description: cleanDescription,
       task_date_deadline: task_date_deadline || null,
       difficulty: taskDifficulty,
+      task_type: taskType,
       status: 'Pending'
     });
 
@@ -229,7 +234,7 @@ async function isTaskAssignee(taskId, userdesc) {
 router.patch('/:taskId', requireAuth, async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { task_description, task_date_deadline, difficulty, status } = req.body;
+    const { task_description, task_date_deadline, difficulty, task_type, status } = req.body;
     const userdesc = req.session.user.userdesc;
 
     // Get task
@@ -279,6 +284,17 @@ router.patch('/:taskId', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Difficulty must be between 1 and 10' });
       }
       updates.difficulty = taskDifficulty;
+    }
+
+    // Only owners can update task type
+    if (task_type !== undefined) {
+      if (!ownerCheck) {
+        return res.status(403).json({ error: 'Only project owner can update task type' });
+      }
+      const validTaskTypes = ['Development', 'Documentation', 'Research', 'Design', 'Testing', 'Planning', 'General'];
+      if (validTaskTypes.includes(task_type)) {
+        updates.task_type = task_type;
+      }
     }
 
     // Both owners and assignees can update status

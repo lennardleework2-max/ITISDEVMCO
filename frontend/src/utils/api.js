@@ -49,7 +49,9 @@ export const members = {
   add: (projectId, data) => request(`/members/${projectId}`, { method: 'POST', body: data }),
   update: (projectId, userdesc, data) => request(`/members/${projectId}/${userdesc}`, { method: 'PATCH', body: data }),
   remove: (projectId, userdesc) => request(`/members/${projectId}/${userdesc}`, { method: 'DELETE' }),
-  search: (query) => request(`/members/search/users?q=${encodeURIComponent(query)}`)
+  search: (query) => request(`/members/search/users?q=${encodeURIComponent(query)}`),
+  getSuggestions: (projectId) => request(`/members/suggestions/${projectId}`),
+  getTaskSuggestions: (projectId, taskType) => request(`/members/task-suggestions/${projectId}?taskType=${encodeURIComponent(taskType)}`)
 };
 
 // Tasks

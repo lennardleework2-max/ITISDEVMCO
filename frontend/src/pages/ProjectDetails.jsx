@@ -11,6 +11,7 @@ function ProjectDetails() {
   const [members, setMembers] = useState([]);
   const [disputes, setDisputes] = useState([]);
   const [capacities, setCapacities] = useState([]);
+  const [roleSuggestions, setRoleSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -23,7 +24,8 @@ function ProjectDetails() {
   const [showSetCapacity, setShowSetCapacity] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [memberEmail, setMemberEmail] = useState('');
-  const [newTask, setNewTask] = useState({ description: '', deadline: '', difficulty: 5, assignees: [] });
+  const [newTask, setNewTask] = useState({ description: '', deadline: '', difficulty: 5, task_type: 'General', assignees: [] });
+  const [taskSuggestions, setTaskSuggestions] = useState([]);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -62,16 +64,18 @@ function ProjectDetails() {
 
   async function loadData() {
     try {
-      const [dashboardData, membersData, disputesData, capacityData] = await Promise.all([
+      const [dashboardData, membersData, disputesData, capacityData, suggestionsData] = await Promise.all([
         dashboard.getProject(projectId),
         membersApi.getAll(projectId),
         disputesApi.getByProject(projectId),
-        capacityApi.getByProject(projectId)
+        capacityApi.getByProject(projectId),
+        membersApi.getSuggestions(projectId)
       ]);
       setData(dashboardData);
       setMembers(membersData);
       setDisputes(disputesData);
       setCapacities(capacityData);
+      setRoleSuggestions(suggestionsData);
     } catch (err) {
       setError(err.message || 'Failed to load project');
     } finally {
@@ -122,15 +126,34 @@ function ProjectDetails() {
         task_description: newTask.description.trim(),
         task_date_deadline: newTask.deadline || null,
         difficulty: newTask.difficulty || 5,
+        task_type: newTask.task_type || 'General',
         assignees: newTask.assignees
       });
       setShowCreateTask(false);
-      setNewTask({ description: '', deadline: '', difficulty: 5, assignees: [] });
+      setNewTask({ description: '', deadline: '', difficulty: 5, task_type: 'General', assignees: [] });
+      setTaskSuggestions([]);
       loadData();
     } catch (err) {
       setActionError(err.message || 'Failed to create task');
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function handleTaskTypeChange(taskType) {
+    setNewTask({ ...newTask, task_type: taskType });
+
+    // Fetch member suggestions based on task type
+    if (taskType && taskType !== 'General') {
+      try {
+        const suggestions = await membersApi.getTaskSuggestions(projectId, taskType);
+        setTaskSuggestions(suggestions);
+      } catch (err) {
+        console.error('Failed to fetch task suggestions:', err);
+        setTaskSuggestions([]);
+      }
+    } else {
+      setTaskSuggestions([]);
     }
   }
 
@@ -162,6 +185,7 @@ function ProjectDetails() {
       description: task.task_description,
       deadline: task.task_date_deadline ? task.task_date_deadline.split('T')[0] : '',
       difficulty: task.difficulty || 5,
+      task_type: task.task_type || 'General',
       status: task.status,
       canFullEdit: isOwner // Only owners can edit description and deadline
     });
@@ -180,6 +204,7 @@ function ProjectDetails() {
         task_description: editingTask.description.trim(),
         task_date_deadline: editingTask.deadline || null,
         difficulty: editingTask.difficulty || 5,
+        task_type: editingTask.task_type || 'General',
         status: editingTask.status
       });
       setShowEditTask(false);
@@ -537,6 +562,7 @@ function ProjectDetails() {
                       </div>
                       <div className="task-card-meta">
                         <span className="task-id">ID: {task.task_id}</span>
+                        <span className="task-type">Type: {task.task_type || 'General'}</span>
                         <span className="task-difficulty">Difficulty: {task.difficulty || 5}/10</span>
                         {task.task_date_deadline && (
                           <span className="task-deadline">
@@ -613,30 +639,51 @@ function ProjectDetails() {
 
           {members.length > 0 ? (
             <div className="members-grid">
-              {members.map(member => (
-                <div key={member.userdesc} className="member-card">
-                  <div className="member-info">
-                    <div className="avatar avatar-lg">
-                      {member.fname?.[0]}{member.lname?.[0]}
+              {members.map(member => {
+                const suggestion = roleSuggestions.find(s => s.userdesc === member.userdesc);
+                return (
+                  <div key={member.userdesc} className="member-card">
+                    <div className="member-info">
+                      <div className="avatar avatar-lg">
+                        {member.fname?.[0]}{member.lname?.[0]}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h3 className="member-name">{member.fullName}</h3>
+                        <p className="member-email">{member.email}</p>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                          <span className={`badge badge-${member.role.toLowerCase()}`}>
+                            {member.role}
+                          </span>
+                          {suggestion && (
+                            <span className="badge badge-suggestion" title={suggestion.reasoning}>
+                              💡 Suggested: {suggestion.suggestedRole} ({suggestion.confidence}%)
+                            </span>
+                          )}
+                        </div>
+                        {suggestion && suggestion.metrics && (
+                          <div className="member-metrics">
+                            <small>
+                              📊 {suggestion.metrics.completedTasks}/{suggestion.metrics.totalTasks} tasks ({suggestion.metrics.completionRate}%) •
+                              Avg complexity: {suggestion.metrics.avgComplexity}/10
+                            </small>
+                          </div>
+                        )}
+                        {suggestion && (
+                          <p className="member-suggestion-reason">{suggestion.reasoning}</p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="member-name">{member.fullName}</h3>
-                      <p className="member-email">{member.email}</p>
-                      <span className={`badge badge-${member.role.toLowerCase()}`}>
-                        {member.role}
-                      </span>
-                    </div>
+                    {isOwner && member.role !== 'Owner' && (
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleRemoveMember(member.userdesc)}
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
-                  {isOwner && member.role !== 'Owner' && (
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleRemoveMember(member.userdesc)}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="card">
@@ -927,6 +974,52 @@ function ProjectDetails() {
                   <small className="form-help">Rate the complexity: 1 = Very Easy, 10 = Very Hard</small>
                 </div>
                 <div className="form-group">
+                  <label className="form-label" htmlFor="taskType">Task Type</label>
+                  <select
+                    id="taskType"
+                    className="form-select"
+                    value={newTask.task_type}
+                    onChange={(e) => handleTaskTypeChange(e.target.value)}
+                    required
+                  >
+                    <option value="General">General</option>
+                    <option value="Development">Development (Coding)</option>
+                    <option value="Documentation">Documentation (Writing)</option>
+                    <option value="Research">Research</option>
+                    <option value="Design">Design</option>
+                    <option value="Testing">Testing</option>
+                    <option value="Planning">Planning</option>
+                  </select>
+                  <small className="form-help">Select the type of work this task involves</small>
+                </div>
+                {taskSuggestions.length > 0 && (
+                  <div className="task-suggestions-box">
+                    <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--primary-dark)' }}>
+                      💡 Recommended Members for {newTask.task_type} Tasks:
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {taskSuggestions.slice(0, 3).map(suggestion => (
+                        <div key={suggestion.userdesc} className="suggestion-item">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <strong style={{ fontSize: '0.875rem' }}>{suggestion.fullName}</strong>
+                              <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray-600)' }}>
+                                ({suggestion.specialization})
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669' }}>
+                              {suggestion.suitabilityScore}% match
+                            </span>
+                          </div>
+                          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: 'var(--gray-600)' }}>
+                            {suggestion.matchReason}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="form-group">
                   <label className="form-label">Assign to Members</label>
                   <div className="assignee-list">
                     {members.map(member => (
@@ -1006,6 +1099,25 @@ function ProjectDetails() {
                       />
                       <small className="form-help">Rate the complexity: 1 = Very Easy, 10 = Very Hard</small>
                     </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="editTaskType">Task Type</label>
+                      <select
+                        id="editTaskType"
+                        className="form-select"
+                        value={editingTask.task_type}
+                        onChange={(e) => setEditingTask({ ...editingTask, task_type: e.target.value })}
+                        required
+                      >
+                        <option value="General">General</option>
+                        <option value="Development">Development (Coding)</option>
+                        <option value="Documentation">Documentation (Writing)</option>
+                        <option value="Research">Research</option>
+                        <option value="Design">Design</option>
+                        <option value="Testing">Testing</option>
+                        <option value="Planning">Planning</option>
+                      </select>
+                      <small className="form-help">Select the type of work this task involves</small>
+                    </div>
                   </>
                 ) : (
                   <div className="task-info-display">
@@ -1013,6 +1125,7 @@ function ProjectDetails() {
                     {editingTask.deadline && (
                       <p><strong>Deadline:</strong> {new Date(editingTask.deadline).toLocaleDateString()}</p>
                     )}
+                    <p><strong>Type:</strong> {editingTask.task_type || 'General'}</p>
                     <p><strong>Difficulty:</strong> {editingTask.difficulty}/10</p>
                   </div>
                 )}
@@ -1494,7 +1607,7 @@ function ProjectDetails() {
 
         .member-card {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
           padding: 1rem;
           background-color: var(--white);
@@ -1504,8 +1617,9 @@ function ProjectDetails() {
 
         .member-info {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 0.75rem;
+          flex: 1;
         }
 
         .member-name {
@@ -1518,6 +1632,32 @@ function ProjectDetails() {
           font-size: 0.8125rem;
           color: var(--gray-500);
           margin-bottom: 0.25rem;
+        }
+
+        .badge-suggestion {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          color: #92400e;
+          border: 1px solid #fbbf24;
+          font-size: 0.75rem;
+          padding: 0.25rem 0.5rem;
+          cursor: help;
+        }
+
+        .member-metrics {
+          margin-top: 0.5rem;
+          padding: 0.5rem;
+          background-color: var(--gray-50);
+          border-radius: 4px;
+          font-size: 0.75rem;
+          color: var(--gray-600);
+        }
+
+        .member-suggestion-reason {
+          margin-top: 0.5rem;
+          font-size: 0.8125rem;
+          color: var(--gray-600);
+          font-style: italic;
+          line-height: 1.4;
         }
 
         .assignee-list {
@@ -1778,6 +1918,21 @@ function ProjectDetails() {
           padding: 1.25rem;
           margin-bottom: 1.5rem;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .task-suggestions-box {
+          background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+          border: 2px solid var(--primary);
+          border-radius: var(--radius);
+          padding: 1rem;
+          margin-bottom: 1rem;
+        }
+
+        .suggestion-item {
+          padding: 0.75rem;
+          background-color: white;
+          border-radius: 4px;
+          border: 1px solid var(--gray-200);
         }
 
         .resolution-options {
