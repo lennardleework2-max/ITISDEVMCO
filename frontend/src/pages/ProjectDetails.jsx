@@ -12,6 +12,7 @@ function ProjectDetails() {
   const [disputes, setDisputes] = useState([]);
   const [capacities, setCapacities] = useState([]);
   const [roleSuggestions, setRoleSuggestions] = useState([]);
+  const [outliers, setOutliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -64,18 +65,20 @@ function ProjectDetails() {
 
   async function loadData() {
     try {
-      const [dashboardData, membersData, disputesData, capacityData, suggestionsData] = await Promise.all([
+      const [dashboardData, membersData, disputesData, capacityData, suggestionsData, outliersData] = await Promise.all([
         dashboard.getProject(projectId),
         membersApi.getAll(projectId),
         disputesApi.getByProject(projectId),
         capacityApi.getByProject(projectId),
-        membersApi.getSuggestions(projectId)
+        membersApi.getSuggestions(projectId),
+        dashboard.getOutliers(projectId)
       ]);
       setData(dashboardData);
       setMembers(membersData);
       setDisputes(disputesData);
       setCapacities(capacityData);
       setRoleSuggestions(suggestionsData);
+      setOutliers(outliersData?.outliers || []);
     } catch (err) {
       setError(err.message || 'Failed to load project');
     } finally {
@@ -534,6 +537,100 @@ function ProjectDetails() {
               )}
             </div>
           </div>
+
+          {/* Outliers Section */}
+          {outliers.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">⚠️ Outliers & Attention Needed</h2>
+                <span className="badge" style={{ backgroundColor: '#dc2626', color: 'white' }}>
+                  {outliers.length} issue{outliers.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="card-body">
+                <div className="outliers-list">
+                  {outliers.map((outlier, index) => {
+                    const severityColors = {
+                      high: { bg: '#fee2e2', border: '#dc2626', text: '#991b1b' },
+                      medium: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' },
+                      low: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' }
+                    };
+
+                    const typeIcons = {
+                      overdue_task: '⏰',
+                      low_performance: '📉',
+                      inactive_member: '😴',
+                      overloaded: '🔥'
+                    };
+
+                    const typeLabels = {
+                      overdue_task: 'Overdue Task',
+                      low_performance: 'Low Performance',
+                      inactive_member: 'Inactive Member',
+                      overloaded: 'Overloaded'
+                    };
+
+                    const colors = severityColors[outlier.severity];
+
+                    return (
+                      <div
+                        key={index}
+                        className="outlier-item"
+                        style={{
+                          backgroundColor: colors.bg,
+                          borderLeft: `4px solid ${colors.border}`,
+                          padding: '1rem',
+                          marginBottom: '0.75rem',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '1.25rem' }}>{typeIcons[outlier.type]}</span>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  color: colors.text,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em'
+                                }}
+                              >
+                                {typeLabels[outlier.type]}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  padding: '0.125rem 0.5rem',
+                                  borderRadius: '999px',
+                                  backgroundColor: colors.border,
+                                  color: 'white',
+                                  fontWeight: 500
+                                }}
+                              >
+                                {outlier.severity.toUpperCase()}
+                              </span>
+                            </div>
+                            <p style={{ margin: 0, color: colors.text, fontSize: '0.9375rem', lineHeight: 1.5 }}>
+                              {outlier.message}
+                            </p>
+                            {outlier.task && (
+                              <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: colors.text, opacity: 0.8 }}>
+                                <strong>Task:</strong> {outlier.task.task_id} - {outlier.task.description}
+                                <br />
+                                <strong>Deadline:</strong> {new Date(outlier.task.deadline).toLocaleDateString()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

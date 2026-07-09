@@ -69,7 +69,8 @@ export const tasks = {
 // Dashboard
 export const dashboard = {
   getProject: (projectId) => request(`/dashboard/project/${projectId}`),
-  getUser: () => request('/dashboard/user')
+  getUser: () => request('/dashboard/user'),
+  getOutliers: (projectId) => request(`/dashboard/outliers/${projectId}`)
 };
 
 // Disputes

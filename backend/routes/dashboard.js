@@ -23,16 +23,30 @@ router.get('/project/:projectId', requireAuth, async (req, res) => {
     const { projectId } = req.params;
     const userdesc = req.session.user.userdesc;
 
+    console.log('=== PROJECT DASHBOARD REQUEST ===');
+    console.log('Project ID:', projectId);
+    console.log('User:', userdesc);
+
     // Check access
-    if (!(await isProjectMember(projectId, userdesc))) {
+    const isMember = await isProjectMember(projectId, userdesc);
+    console.log('Is member:', isMember);
+
+    if (!isMember) {
+      console.log('Access denied - user is not a project member');
       return res.status(403).json({ error: 'Access denied' });
     }
 
     // Get project
+    console.log('Querying projects table with:', `project_id=eq.${projectId}`);
     const projects = await select('projects', `project_id=eq.${projectId}`);
+    console.log('Projects found:', projects ? projects.length : 0);
+
     if (!projects || projects.length === 0) {
+      console.log('ERROR: Project not found in database');
       return res.status(404).json({ error: 'Project not found' });
     }
+
+    console.log('Project data:', projects[0]);
 
     // Get members
     const members = await select('projects_members', `project_id=eq.${projectId}`);
@@ -130,6 +144,170 @@ router.get('/project/:projectId', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Dashboard error:', error.message);
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  }
+});
+
+// Get outliers for a project (late submissions, missed deadlines, low performers, etc.)
+router.get('/outliers/:projectId', requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userdesc = req.session.user.userdesc;
+
+    // Check access
+    if (!(await isProjectMember(projectId, userdesc))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get all tasks with assignees
+    const tasks = await select('project_tasks', `project_id=eq.${projectId}`);
+    const taskIds = (tasks || []).map(t => t.task_id);
+
+    let assignees = [];
+    if (taskIds.length > 0) {
+      const taskIdsQuery = taskIds.map(t => `"${t}"`).join(',');
+      assignees = await select('project_task_assignees', `task_id=in.(${taskIdsQuery})`);
+    }
+
+    // Get members
+    const members = await select('projects_members', `project_id=eq.${projectId}`);
+    const memberUserdescs = members.map(m => m.userdesc);
+
+    // Get user details
+    let users = [];
+    if (memberUserdescs.length > 0) {
+      const userdescsQuery = memberUserdescs.map(u => `"${u}"`).join(',');
+      users = await select('mf_users', `userdesc=in.(${userdescsQuery})&select=userdesc,fname,lname`);
+    }
+
+    const outliers = [];
+    const now = new Date();
+
+    // 1. Detect overdue tasks (past deadline and not completed)
+    const overdueTasks = (tasks || []).filter(task => {
+      if (!task.task_date_deadline || task.status === 'Completed') return false;
+      const deadline = new Date(task.task_date_deadline);
+      return deadline < now;
+    });
+
+    overdueTasks.forEach(task => {
+      const taskAssignees = (assignees || []).filter(a => a.task_id === task.task_id);
+      taskAssignees.forEach(assignee => {
+        const user = users.find(u => u.userdesc === assignee.userdesc);
+        const daysPastDue = Math.floor((now - new Date(task.task_date_deadline)) / (1000 * 60 * 60 * 24));
+
+        outliers.push({
+          type: 'overdue_task',
+          severity: daysPastDue > 7 ? 'high' : daysPastDue > 3 ? 'medium' : 'low',
+          member: {
+            userdesc: assignee.userdesc,
+            name: user ? `${user.fname} ${user.lname}` : assignee.userdesc
+          },
+          task: {
+            task_id: task.task_id,
+            description: task.task_description,
+            deadline: task.task_date_deadline
+          },
+          message: `${user ? user.fname + ' ' + user.lname : assignee.userdesc} has overdue task "${task.task_description}" (${daysPastDue} days past due)`,
+          daysPastDue
+        });
+      });
+    });
+
+    // 2. Calculate completion rates and detect low performers
+    const memberStats = memberUserdescs.map(memberUserdesc => {
+      const user = users.find(u => u.userdesc === memberUserdesc);
+      const memberAssignments = (assignees || []).filter(a => a.userdesc === memberUserdesc);
+      const totalTasks = memberAssignments.length;
+      const completedTasks = memberAssignments.filter(a => a.status === 'Completed').length;
+      const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+      return {
+        userdesc: memberUserdesc,
+        name: user ? `${user.fname} ${user.lname}` : memberUserdesc,
+        totalTasks,
+        completedTasks,
+        completionRate
+      };
+    });
+
+    const avgCompletionRate = memberStats.reduce((sum, m) => sum + m.completionRate, 0) / memberStats.length || 0;
+
+    // Low performers: completion rate < 50% and significantly below average
+    memberStats.forEach(member => {
+      if (member.totalTasks > 0 && member.completionRate < 50 && member.completionRate < avgCompletionRate - 20) {
+        outliers.push({
+          type: 'low_performance',
+          severity: member.completionRate < 30 ? 'high' : 'medium',
+          member: {
+            userdesc: member.userdesc,
+            name: member.name
+          },
+          message: `${member.name} has low completion rate (${member.completionRate.toFixed(0)}% vs team avg ${avgCompletionRate.toFixed(0)}%)`,
+          completionRate: member.completionRate,
+          teamAverage: avgCompletionRate
+        });
+      }
+    });
+
+    // 3. Detect inactive members (0 completed tasks but have assigned tasks)
+    memberStats.forEach(member => {
+      if (member.totalTasks > 0 && member.completedTasks === 0) {
+        outliers.push({
+          type: 'inactive_member',
+          severity: member.totalTasks >= 5 ? 'high' : 'medium',
+          member: {
+            userdesc: member.userdesc,
+            name: member.name
+          },
+          message: `${member.name} has ${member.totalTasks} assigned tasks but 0 completed`,
+          assignedTasks: member.totalTasks
+        });
+      }
+    });
+
+    // 4. Detect workload imbalance (members with significantly more work than others)
+    const taskComplexities = memberStats.map(member => {
+      const memberTaskIds = (assignees || [])
+        .filter(a => a.userdesc === member.userdesc)
+        .map(a => a.task_id);
+      const memberTasks = (tasks || []).filter(t => memberTaskIds.includes(t.task_id));
+      const totalComplexity = memberTasks.reduce((sum, task) => sum + (task.difficulty || 5), 0);
+
+      return {
+        ...member,
+        totalComplexity
+      };
+    });
+
+    const avgComplexity = taskComplexities.reduce((sum, m) => sum + m.totalComplexity, 0) / taskComplexities.length || 0;
+
+    taskComplexities.forEach(member => {
+      if (member.totalComplexity > avgComplexity * 1.5 && member.totalComplexity > 20) {
+        outliers.push({
+          type: 'overloaded',
+          severity: member.totalComplexity > avgComplexity * 2 ? 'high' : 'medium',
+          member: {
+            userdesc: member.userdesc,
+            name: member.name
+          },
+          message: `${member.name} is overloaded with ${member.totalComplexity} complexity points (team avg: ${avgComplexity.toFixed(0)})`,
+          complexity: member.totalComplexity,
+          teamAverage: avgComplexity
+        });
+      }
+    });
+
+    // Sort by severity (high first)
+    const severityOrder = { high: 0, medium: 1, low: 2 };
+    outliers.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+    res.json({
+      total: outliers.length,
+      outliers
+    });
+  } catch (error) {
+    console.error('Get outliers error:', error.message);
+    res.status(500).json({ error: 'Failed to get outliers' });
   }
 });
 
