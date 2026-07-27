@@ -1,7 +1,41 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { dashboard, members as membersApi, tasks as tasksApi, projects as projectsApi, disputes as disputesApi, capacity as capacityApi } from '../utils/api';
+import { exportPDF } from '../utils/exportReport';
 import { useAuth } from '../context/AuthContext';
+
+const CAPACITY_ROLES = ['Internship', 'Part-time', 'Full-time'];
+
+const ORGANIZATION_OPTIONS = [
+  'LSCS - La Salle Computer Society',
+  'AISEC',
+  'EngliCOM',
+  'LSDC - La Salle Dance Club',
+  'The Lasallian',
+  'Green Giant FM',
+  'Ang Pahayagang Plaridel',
+  'Behavioral Science Society',
+  'Malate Literary Folio',
+  'BLAZE',
+  'CATCH',
+  'DLSU Pusa',
+  'LAMB Lasallian Ambassadors'
+];
+
+function parseInternship(value = '') {
+  const match = value.match(/^(.*?)\s+[—–-]\s+(Internship|Part-time|Full-time)$/i);
+  if (!match) return { company: value, role: '' };
+
+  const role = CAPACITY_ROLES.find(option => option.toLowerCase() === match[2].toLowerCase()) || '';
+  return { company: match[1].trim(), role };
+}
+
+function parseOrganizations(value = '') {
+  const savedOrganizations = value.split(/\s*(?:,|\n|;)\s*/).filter(Boolean);
+  const selected = savedOrganizations.filter(org => ORGANIZATION_OPTIONS.includes(org));
+  const other = savedOrganizations.filter(org => !ORGANIZATION_OPTIONS.includes(org)).join(', ');
+  return { selected, other };
+}
 
 function ProjectDetails() {
   const { projectId } = useParams();
@@ -42,10 +76,16 @@ function ProjectDetails() {
   });
   const [complexityAnalysis, setComplexityAnalysis] = useState(null);
 
+  // Capacity tab — which member is selected in the master-detail panel
+  const [selectedCapacityMember, setSelectedCapacityMember] = useState(null);
+
   // Capacity modal state
   const [capacityForm, setCapacityForm] = useState({
-    internship: '',
-    organizations: '',
+    company: '',
+    capacity_role: '',
+    selected_organizations: [],
+    show_other_organization: false,
+    other_organization: '',
     other_school_work: '',
     personal_responsibilities: '',
     availability_hours_per_week: '',
@@ -318,9 +358,14 @@ function ProjectDetails() {
     // Load existing capacity if available
     const existingCapacity = capacities.find(c => c.userdesc === user?.userdesc);
     if (existingCapacity) {
+      const internship = parseInternship(existingCapacity.internship);
+      const organizations = parseOrganizations(existingCapacity.organizations);
       setCapacityForm({
-        internship: existingCapacity.internship || '',
-        organizations: existingCapacity.organizations || '',
+        company: internship.company,
+        capacity_role: internship.role,
+        selected_organizations: organizations.selected,
+        show_other_organization: Boolean(organizations.other),
+        other_organization: organizations.other,
         other_school_work: existingCapacity.other_school_work || '',
         personal_responsibilities: existingCapacity.personal_responsibilities || '',
         availability_hours_per_week: existingCapacity.availability_hours_per_week || '',
@@ -328,8 +373,11 @@ function ProjectDetails() {
       });
     } else {
       setCapacityForm({
-        internship: '',
-        organizations: '',
+        company: '',
+        capacity_role: '',
+        selected_organizations: [],
+        show_other_organization: false,
+        other_organization: '',
         other_school_work: '',
         personal_responsibilities: '',
         availability_hours_per_week: '',
@@ -340,13 +388,35 @@ function ProjectDetails() {
     setShowSetCapacity(true);
   }
 
+  function toggleOrganization(organization) {
+    setCapacityForm(current => ({
+      ...current,
+      selected_organizations: current.selected_organizations.includes(organization)
+        ? current.selected_organizations.filter(item => item !== organization)
+        : [...current.selected_organizations, organization]
+    }));
+  }
+
   async function handleSaveCapacity(e) {
     e.preventDefault();
     setActionLoading(true);
     setActionError('');
 
     try {
-      await capacityApi.save(projectId, capacityForm);
+      const company = capacityForm.company.trim();
+      const otherOrganizations = capacityForm.other_organization
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+      const payload = {
+        internship: [company, capacityForm.capacity_role].filter(Boolean).join(' — '),
+        organizations: [...capacityForm.selected_organizations, ...otherOrganizations].join(', '),
+        other_school_work: capacityForm.other_school_work,
+        personal_responsibilities: capacityForm.personal_responsibilities,
+        availability_hours_per_week: capacityForm.availability_hours_per_week,
+        notes: capacityForm.notes
+      };
+      await capacityApi.save(projectId, payload);
       setShowSetCapacity(false);
       loadData();
     } catch (err) {
@@ -456,6 +526,27 @@ function ProjectDetails() {
 
       {activeTab === 'overview' && (
         <div className="overview-section">
+
+          {/* Export bar */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: '0.8125rem', padding: '0.375rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+              onClick={() => exportPDF({
+                project: data?.project,
+                stats: data?.stats,
+                memberContributions: data?.memberContributions,
+                tasks: data?.tasks,
+                outliers,
+              })}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+              Export PDF
+            </button>
+          </div>
+
           <div className="grid grid-cols-4 mb-4">
             <div className="stat-card primary">
               <div className="stat-value">{data?.stats?.completionPercentage || 0}%</div>
@@ -541,93 +632,140 @@ function ProjectDetails() {
           {/* Outliers Section */}
           {outliers.length > 0 && (
             <div className="card">
-              <div className="card-header">
-                <h2 className="card-title">⚠️ Outliers & Attention Needed</h2>
-                <span className="badge" style={{ backgroundColor: '#dc2626', color: 'white' }}>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="card-title">⚠️ Outliers & Attention Needed</h2>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--gray-500)', marginTop: '0.2rem' }}>
+                    Sorted by urgency — act from top to bottom. Click any row to take action.
+                  </p>
+                </div>
+                <span className="badge" style={{ backgroundColor: 'var(--danger)', color: 'white', flexShrink: 0 }}>
                   {outliers.length} issue{outliers.length !== 1 ? 's' : ''}
                 </span>
               </div>
-              <div className="card-body">
-                <div className="outliers-list">
-                  {outliers.map((outlier, index) => {
-                    const severityColors = {
-                      high: { bg: '#fee2e2', border: '#dc2626', text: '#991b1b' },
-                      medium: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' },
-                      low: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' }
-                    };
 
-                    const typeIcons = {
-                      overdue_task: '⏰',
-                      low_performance: '📉',
-                      inactive_member: '😴',
-                      overloaded: '🔥'
-                    };
+              {/* Fixed-height scrollable table — never blows up the page */}
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <table className="table" style={{ margin: 0 }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr>
+                      <th style={{ width: '4rem' }}>#</th>
+                      <th style={{ width: '10rem' }}>Type</th>
+                      <th style={{ width: '10rem' }}>Person</th>
+                      <th>Task / Issue</th>
+                      <th style={{ width: '7.5rem' }}>Deadline</th>
+                      <th style={{ width: '7rem' }}>Status</th>
+                      <th style={{ width: '1.5rem' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {outliers.map((outlier, index) => {
+                      const severityColors = {
+                        high:   { border: '#dc2626', text: '#991b1b', badgeBg: '#dc2626', rowBg: '#fff5f5' },
+                        medium: { border: '#d97706', text: '#92400e', badgeBg: '#d97706', rowBg: '#fffbeb' },
+                        low:    { border: '#3b82f6', text: '#1e40af', badgeBg: '#3b82f6', rowBg: '#eff6ff' }
+                      };
+                      const typeIcons  = { overdue_task: '⏰', low_performance: '📉', inactive_member: '😴', overloaded: '🔥' };
+                      const typeLabels = { overdue_task: 'Overdue Task', low_performance: 'Low Performance', inactive_member: 'Inactive Member', overloaded: 'Overloaded' };
 
-                    const typeLabels = {
-                      overdue_task: 'Overdue Task',
-                      low_performance: 'Low Performance',
-                      inactive_member: 'Inactive Member',
-                      overloaded: 'Overloaded'
-                    };
+                      const colors  = severityColors[outlier.severity] || severityColors.low;
+                      const isFirst = index === 0;
 
-                    const colors = severityColors[outlier.severity];
+                      const issueText =
+                        outlier.task?.description ||
+                        (outlier.type === 'low_performance'  ? `${outlier.completionRate?.toFixed(0)}% completion vs ${outlier.teamAverage?.toFixed(0)}% team avg` :
+                         outlier.type === 'inactive_member'  ? `${outlier.assignedTasks} tasks assigned, 0 completed` :
+                         outlier.type === 'overloaded'       ? `${outlier.complexity} complexity pts vs ${outlier.teamAverage?.toFixed(0)} avg` : '—');
 
-                    return (
-                      <div
-                        key={index}
-                        className="outlier-item"
-                        style={{
-                          backgroundColor: colors.bg,
-                          borderLeft: `4px solid ${colors.border}`,
-                          padding: '1rem',
-                          marginBottom: '0.75rem',
-                          borderRadius: '4px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                              <span style={{ fontSize: '1.25rem' }}>{typeIcons[outlier.type]}</span>
-                              <span
-                                style={{
-                                  fontSize: '0.75rem',
-                                  fontWeight: 600,
-                                  color: colors.text,
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.05em'
-                                }}
-                              >
-                                {typeLabels[outlier.type]}
+                      const handleOutlierClick = () => {
+                        if (outlier.type === 'overdue_task' && outlier.task) {
+                          navigate(`/tasks/${outlier.task.task_id}`);
+                        } else {
+                          setActiveTab('members');
+                        }
+                      };
+
+                      return (
+                        <tr
+                          key={index}
+                          onClick={handleOutlierClick}
+                          style={{
+                            cursor: 'pointer',
+                            backgroundColor: isFirst ? colors.rowBg : undefined,
+                          }}
+                          onMouseEnter={e => { if (!isFirst) e.currentTarget.style.backgroundColor = 'var(--gray-50)'; }}
+                          onMouseLeave={e => { if (!isFirst) e.currentTarget.style.backgroundColor = ''; }}
+                        >
+                          {/* # with colored left border */}
+                          <td style={{ borderLeft: `3px solid ${colors.border}`, paddingLeft: '0.875rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                              <span style={{
+                                width: '1.5rem', height: '1.5rem', borderRadius: '50%',
+                                backgroundColor: isFirst ? colors.border : 'var(--gray-200)',
+                                color: isFirst ? 'white' : 'var(--gray-500)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.75rem', fontWeight: 700,
+                              }}>
+                                {index + 1}
                               </span>
-                              <span
-                                style={{
-                                  fontSize: '0.75rem',
-                                  padding: '0.125rem 0.5rem',
-                                  borderRadius: '999px',
-                                  backgroundColor: colors.border,
-                                  color: 'white',
-                                  fontWeight: 500
-                                }}
-                              >
-                                {outlier.severity.toUpperCase()}
-                              </span>
+                              {isFirst && (
+                                <span style={{ fontSize: '0.5rem', fontWeight: 700, color: colors.border, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.1, textAlign: 'center' }}>
+                                  Do First
+                                </span>
+                              )}
                             </div>
-                            <p style={{ margin: 0, color: colors.text, fontSize: '0.9375rem', lineHeight: 1.5 }}>
-                              {outlier.message}
-                            </p>
-                            {outlier.task && (
-                              <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: colors.text, opacity: 0.8 }}>
-                                <strong>Task:</strong> {outlier.task.task_id} - {outlier.task.description}
-                                <br />
-                                <strong>Deadline:</strong> {new Date(outlier.task.deadline).toLocaleDateString()}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                          </td>
+
+                          {/* Type */}
+                          <td>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: 'var(--gray-600)' }}>
+                              {typeIcons[outlier.type]} {typeLabels[outlier.type]}
+                            </span>
+                          </td>
+
+                          {/* Person */}
+                          <td style={{ fontWeight: 600, color: 'var(--gray-800)', fontSize: '0.875rem' }}>
+                            {outlier.member?.name || '—'}
+                          </td>
+
+                          {/* Task / Issue */}
+                          <td style={{ color: 'var(--gray-600)', fontSize: '0.875rem', maxWidth: '200px' }}>
+                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {issueText}
+                            </span>
+                          </td>
+
+                          {/* Deadline */}
+                          <td style={{ fontSize: '0.8125rem', color: 'var(--gray-500)', whiteSpace: 'nowrap' }}>
+                            {outlier.task?.deadline
+                              ? new Date(outlier.task.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : '—'}
+                          </td>
+
+                          {/* Status badge */}
+                          <td>
+                            <span style={{
+                              display: 'inline-block',
+                              fontSize: '0.6875rem', padding: '0.15rem 0.5rem', borderRadius: '999px',
+                              backgroundColor: colors.badgeBg, color: 'white', fontWeight: 600, whiteSpace: 'nowrap',
+                            }}>
+                              {outlier.type === 'overdue_task'
+                                ? `${outlier.daysPastDue}d overdue`
+                                : outlier.severity.toUpperCase()}
+                            </span>
+                          </td>
+
+                          {/* Arrow */}
+                          <td style={{ color: 'var(--gray-400)', textAlign: 'right', paddingRight: '1rem' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="9,18 15,12 9,6" />
+                            </svg>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -892,96 +1030,227 @@ function ProjectDetails() {
         </div>
       )}
 
-      {activeTab === 'capacity' && (
-        <div className="capacity-section">
-          <div className="mb-4">
-            <button className="btn btn-primary" onClick={openSetCapacity}>
-              {capacities.find(c => c.userdesc === user?.userdesc) ? 'Update' : 'Set'} My Capacity
-            </button>
-          </div>
+      {activeTab === 'capacity' && (() => {
+        // Build a unified list: all members, each with their capacity data (or null)
+        const allMembersWithCapacity = members.map(m => ({
+          ...m,
+          capacity: capacities.find(c => c.userdesc === m.userdesc) || null
+        }));
 
-          <p className="capacity-intro">
-            Share your current responsibilities to help your team understand your availability and workload.
-            This promotes open communication and realistic task distribution.
-          </p>
+        // Default selection: current user, else first member
+        const effectiveSelected = selectedCapacityMember
+          || user?.userdesc
+          || allMembersWithCapacity[0]?.userdesc;
 
-          {capacities.length > 0 ? (
-            <div className="capacity-list">
-              {capacities.map(capacity => (
-                <div key={capacity.userdesc} className="capacity-card">
-                  <div className="capacity-header">
-                    <h3 className="capacity-name">{capacity.fullName}</h3>
-                    {capacity.availability_hours_per_week && (
-                      <span className="capacity-hours">
-                        {capacity.availability_hours_per_week}h/week available
-                      </span>
-                    )}
-                  </div>
+        const selectedMember = allMembersWithCapacity.find(m => m.userdesc === effectiveSelected)
+          || allMembersWithCapacity[0];
 
-                  <div className="capacity-details">
-                    {capacity.internship && (
-                      <div className="capacity-item">
-                        <strong>Internship:</strong>
-                        <p>{capacity.internship}</p>
-                      </div>
-                    )}
+        const cap = selectedMember?.capacity;
+        const isMe = selectedMember?.userdesc === user?.userdesc;
 
-                    {capacity.organizations && (
-                      <div className="capacity-item">
-                        <strong>Organizations:</strong>
-                        <p>{capacity.organizations}</p>
-                      </div>
-                    )}
+        const hoursColor = (h) => {
+          if (!h) return 'var(--gray-300)';
+          if (h >= 15) return 'var(--primary)';
+          if (h >= 8)  return '#f59e0b';
+          return '#ef4444';
+        };
 
-                    {capacity.other_school_work && (
-                      <div className="capacity-item">
-                        <strong>Other School Work:</strong>
-                        <p>{capacity.other_school_work}</p>
-                      </div>
-                    )}
+        const fields = [
+          { icon: '💼', label: 'Internship / Part-time Job',       key: 'internship' },
+          { icon: '🏛️', label: 'Organizations & Affiliations',      key: 'organizations' },
+          { icon: '📚', label: 'Other School Responsibilities',     key: 'other_school_work' },
+          { icon: '🏠', label: 'Personal Responsibilities',         key: 'personal_responsibilities' },
+          { icon: '📝', label: 'Additional Notes',                  key: 'notes' },
+        ];
 
-                    {capacity.personal_responsibilities && (
-                      <div className="capacity-item">
-                        <strong>Personal Responsibilities:</strong>
-                        <p>{capacity.personal_responsibilities}</p>
-                      </div>
-                    )}
-
-                    {capacity.notes && (
-                      <div className="capacity-item">
-                        <strong>Notes:</strong>
-                        <p>{capacity.notes}</p>
-                      </div>
-                    )}
-
-                    {!capacity.internship && !capacity.organizations &&
-                     !capacity.other_school_work && !capacity.personal_responsibilities &&
-                     !capacity.notes && (
-                      <p className="text-sm text-gray">No additional details provided</p>
-                    )}
-                  </div>
-
-                  <div className="capacity-meta">
-                    <span className="text-sm text-gray">
-                      Last updated: {new Date(capacity.updated_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="card">
-              <div className="empty-state">
-                <div className="empty-state-icon">📋</div>
-                <h3 className="empty-state-title">No capacity information yet</h3>
-                <p className="empty-state-text">
-                  Team members can share their availability and current responsibilities here
+        return (
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {/* Header */}
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 className="card-title">Team Capacity</h2>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--gray-500)', marginTop: '0.2rem' }}>
+                  Select a member to view their availability and commitments
                 </p>
               </div>
+              <button className="btn btn-primary" style={{ flexShrink: 0 }} onClick={openSetCapacity}>
+                {capacities.find(c => c.userdesc === user?.userdesc) ? 'Update My Capacity' : 'Set My Capacity'}
+              </button>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Master-detail body */}
+            <div style={{ display: 'flex', minHeight: '420px' }}>
+
+              {/* LEFT — member list */}
+              <div style={{
+                width: '220px', flexShrink: 0,
+                borderRight: '1px solid var(--gray-100)',
+                overflowY: 'auto',
+              }}>
+                {allMembersWithCapacity.length === 0 ? (
+                  <p style={{ padding: '1rem', fontSize: '0.875rem', color: 'var(--gray-500)' }}>No members yet</p>
+                ) : allMembersWithCapacity.map(m => {
+                  const isSelected = m.userdesc === effectiveSelected;
+                  const hrs = m.capacity?.availability_hours_per_week;
+                  return (
+                    <button
+                      key={m.userdesc}
+                      onClick={() => setSelectedCapacityMember(m.userdesc)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.625rem',
+                        width: '100%', padding: '0.75rem 1rem', textAlign: 'left',
+                        border: 'none', borderBottom: '1px solid var(--gray-100)',
+                        background: isSelected ? 'var(--primary-bg)' : 'transparent',
+                        borderLeft: isSelected ? '3px solid var(--primary)' : '3px solid transparent',
+                        cursor: 'pointer', transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--gray-50)'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      {/* Avatar */}
+                      <div style={{
+                        width: '2rem', height: '2rem', borderRadius: '50%', flexShrink: 0,
+                        background: isSelected ? 'var(--primary)' : 'var(--gray-200)',
+                        color: isSelected ? 'white' : 'var(--gray-600)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '0.75rem', fontWeight: 700,
+                      }}>
+                        {m.fname?.[0]}{m.lname?.[0]}
+                      </div>
+
+                      {/* Name + hours */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {m.fullName}
+                          {m.userdesc === user?.userdesc && (
+                            <span style={{ marginLeft: '0.3rem', fontSize: '0.6875rem', color: 'var(--primary-dark)', fontWeight: 500 }}>(you)</span>
+                          )}
+                        </div>
+                        {hrs ? (
+                          <div style={{ marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <div style={{ flex: 1, height: '4px', borderRadius: '2px', background: 'var(--gray-200)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min((hrs / 40) * 100, 100)}%`, background: hoursColor(hrs), borderRadius: '2px' }} />
+                            </div>
+                            <span style={{ fontSize: '0.6875rem', color: 'var(--gray-500)', flexShrink: 0 }}>{hrs}h</span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--gray-400)', marginTop: '0.1rem' }}>Not set</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* RIGHT — detail panel */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+                {!selectedMember ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--gray-400)' }}>
+                    Select a member on the left
+                  </div>
+                ) : (
+                  <>
+                    {/* Detail header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                        <div style={{
+                          width: '3rem', height: '3rem', borderRadius: '50%',
+                          background: 'var(--primary)', color: 'white',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '1.125rem', fontWeight: 700, flexShrink: 0,
+                        }}>
+                          {selectedMember.fname?.[0]}{selectedMember.lname?.[0]}
+                        </div>
+                        <div>
+                          <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--gray-900)', margin: 0 }}>
+                            {selectedMember.fullName}
+                            {isMe && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--primary-dark)', fontWeight: 500 }}>(you)</span>}
+                          </h3>
+                          <span style={{ fontSize: '0.8125rem', color: 'var(--gray-500)' }}>
+                            {selectedMember.role}
+                            {cap?.updated_at && ` · Updated ${new Date(cap.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                          </span>
+                        </div>
+                      </div>
+                      {isMe && (
+                        <button className="btn btn-secondary" style={{ fontSize: '0.8125rem', padding: '0.375rem 0.875rem' }} onClick={openSetCapacity}>
+                          Edit
+                        </button>
+                      )}
+                    </div>
+
+                    {!cap ? (
+                      <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--gray-400)' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📋</div>
+                        <p style={{ fontWeight: 500, color: 'var(--gray-600)', marginBottom: '0.375rem' }}>
+                          {isMe ? "You haven't set your capacity yet" : `${selectedMember.fullName} hasn't set their capacity yet`}
+                        </p>
+                        {isMe && (
+                          <button className="btn btn-primary" style={{ marginTop: '0.75rem' }} onClick={openSetCapacity}>
+                            Set My Capacity
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Hours/week bar */}
+                        {cap.availability_hours_per_week && (
+                          <div style={{
+                            padding: '0.875rem 1rem', borderRadius: 'var(--radius)',
+                            background: 'var(--primary-bg)', border: '1px solid var(--primary-light)',
+                            marginBottom: '1.25rem',
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary-dark)' }}>⏰ Hours available per week</span>
+                              <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary-dark)' }}>
+                                {cap.availability_hours_per_week}h
+                              </span>
+                            </div>
+                            <div style={{ height: '8px', borderRadius: '4px', background: 'var(--primary-light)', overflow: 'hidden' }}>
+                              <div style={{
+                                height: '100%',
+                                width: `${Math.min((cap.availability_hours_per_week / 40) * 100, 100)}%`,
+                                background: hoursColor(cap.availability_hours_per_week),
+                                borderRadius: '4px', transition: 'width 0.3s ease',
+                              }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--gray-400)', marginTop: '0.25rem' }}>
+                              <span>0h</span><span>20h</span><span>40h</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fields */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                          {fields.map(({ icon, label, key }) => (
+                            cap[key] ? (
+                              <div key={key} style={{ display: 'flex', gap: '0.75rem' }}>
+                                <span style={{ fontSize: '1.1rem', flexShrink: 0, marginTop: '0.05rem' }}>{icon}</span>
+                                <div>
+                                  <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
+                                    {label}
+                                  </p>
+                                  <p style={{ margin: 0, fontSize: '0.9375rem', color: 'var(--gray-700)', lineHeight: 1.55 }}>
+                                    {cap[key]}
+                                  </p>
+                                </div>
+                              </div>
+                            ) : null
+                          ))}
+
+                          {fields.every(f => !cap[f.key]) && !cap.availability_hours_per_week && (
+                            <p style={{ color: 'var(--gray-400)', fontSize: '0.875rem' }}>No details provided</p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Add Member Modal */}
       {showAddMember && (
@@ -1495,31 +1764,72 @@ function ProjectDetails() {
                 </p>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="internship">
-                    Internship / Part-time Job
-                  </label>
-                  <textarea
-                    id="internship"
-                    className="form-textarea"
-                    value={capacityForm.internship}
-                    onChange={(e) => setCapacityForm({ ...capacityForm, internship: e.target.value })}
-                    placeholder="e.g., Software Engineering Intern at XYZ Corp (20hrs/week)"
-                    rows="2"
-                  />
+                  <span className="form-label">Work Commitment</span>
+                  <div className="capacity-work-row">
+                    <div>
+                      <label className="capacity-field-label" htmlFor="capacityCompany">Company</label>
+                      <input
+                        id="capacityCompany"
+                        className="form-input"
+                        value={capacityForm.company}
+                        onChange={(e) => setCapacityForm({ ...capacityForm, company: e.target.value })}
+                        placeholder="e.g., XYZ Corporation"
+                      />
+                    </div>
+                    <div>
+                      <label className="capacity-field-label" htmlFor="capacityRole">Role</label>
+                      <select
+                        id="capacityRole"
+                        className="form-select"
+                        value={capacityForm.capacity_role}
+                        onChange={(e) => setCapacityForm({ ...capacityForm, capacity_role: e.target.value })}
+                      >
+                        <option value="">Select a role</option>
+                        {CAPACITY_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="organizations">
+                  <span className="form-label">
                     Organizations & Affiliations
-                  </label>
-                  <textarea
-                    id="organizations"
-                    className="form-textarea"
-                    value={capacityForm.organizations}
-                    onChange={(e) => setCapacityForm({ ...capacityForm, organizations: e.target.value })}
-                    placeholder="e.g., Student Council Secretary, Computer Society Member"
-                    rows="2"
-                  />
+                  </span>
+                  <small className="form-help capacity-org-help">Select all that apply.</small>
+                  <div className="capacity-org-options">
+                    {ORGANIZATION_OPTIONS.map(organization => (
+                      <label className="capacity-org-option" key={organization}>
+                        <input
+                          type="checkbox"
+                          checked={capacityForm.selected_organizations.includes(organization)}
+                          onChange={() => toggleOrganization(organization)}
+                        />
+                        <span>{organization}</span>
+                      </label>
+                    ))}
+                    <label className="capacity-org-option capacity-org-other">
+                      <input
+                        type="checkbox"
+                        checked={capacityForm.show_other_organization}
+                        onChange={(e) => setCapacityForm({
+                          ...capacityForm,
+                          show_other_organization: e.target.checked,
+                          other_organization: e.target.checked ? capacityForm.other_organization : ''
+                        })}
+                      />
+                      <span>Others</span>
+                    </label>
+                  </div>
+                  {capacityForm.show_other_organization && (
+                    <input
+                      className="form-input capacity-other-input"
+                      value={capacityForm.other_organization}
+                      onChange={(e) => setCapacityForm({ ...capacityForm, other_organization: e.target.value })}
+                      placeholder="Enter other organization(s), separated by commas"
+                      aria-label="Other organizations"
+                      autoFocus
+                    />
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -2156,6 +2466,68 @@ function ProjectDetails() {
           line-height: 1.5;
         }
 
+        .capacity-work-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1.6fr) minmax(150px, 1fr);
+          gap: 0.75rem;
+        }
+
+        .capacity-field-label {
+          display: block;
+          margin-bottom: 0.375rem;
+          color: var(--gray-600);
+          font-size: 0.8125rem;
+        }
+
+        .capacity-org-help {
+          margin-top: -0.125rem;
+          margin-bottom: 0.625rem;
+        }
+
+        .capacity-org-options {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.5rem;
+          max-height: 260px;
+          padding: 0.75rem;
+          overflow-y: auto;
+          border: 1px solid var(--gray-300);
+          border-radius: var(--radius);
+          background: var(--gray-50);
+        }
+
+        .capacity-org-option {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.5rem;
+          padding: 0.45rem 0.5rem;
+          border-radius: 4px;
+          color: var(--gray-700);
+          font-size: 0.8125rem;
+          line-height: 1.3;
+          cursor: pointer;
+        }
+
+        .capacity-org-option:hover {
+          background: var(--white);
+        }
+
+        .capacity-org-option input {
+          flex: 0 0 auto;
+          width: 16px;
+          height: 16px;
+          margin-top: 0.05rem;
+          accent-color: var(--primary);
+        }
+
+        .capacity-org-other {
+          font-weight: 600;
+        }
+
+        .capacity-other-input {
+          margin-top: 0.625rem;
+        }
+
         .form-help {
           display: block;
           margin-top: 0.375rem;
@@ -2185,6 +2557,11 @@ function ProjectDetails() {
 
           .modal-lg {
             max-width: 100%;
+          }
+
+          .capacity-work-row,
+          .capacity-org-options {
+            grid-template-columns: 1fr;
           }
 
           .dispute-header {

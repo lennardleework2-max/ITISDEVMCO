@@ -297,9 +297,16 @@ router.get('/outliers/:projectId', requireAuth, async (req, res) => {
       }
     });
 
-    // Sort by severity (high first)
+    // Sort: overdue tasks first (oldest deadline = most urgent), then other types by severity
     const severityOrder = { high: 0, medium: 1, low: 2 };
-    outliers.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+    outliers.sort((a, b) => {
+      if (a.type === 'overdue_task' && b.type !== 'overdue_task') return -1;
+      if (a.type !== 'overdue_task' && b.type === 'overdue_task') return 1;
+      if (a.type === 'overdue_task' && b.type === 'overdue_task') {
+        return new Date(a.task.deadline) - new Date(b.task.deadline);
+      }
+      return severityOrder[a.severity] - severityOrder[b.severity];
+    });
 
     res.json({
       total: outliers.length,
